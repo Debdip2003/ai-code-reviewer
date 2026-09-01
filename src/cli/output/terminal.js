@@ -38,21 +38,46 @@ export function printError(message) {
 }
 
 /**
- * Formats and prints file discovery results to the terminal.
- * @param {Object} result
- * @param {string} result.rootDirectory - Discovered root directory.
- * @param {Array<{ relativePath: string }>} result.files - Discovered files list.
- * @param {{ ignored: number, tooLarge: number, limited: number }} [result.skipped] - Skipped count.
+ * Formats and prints review & parse results to the terminal.
+ *
+ * @param {Object} params
+ * @param {string} params.rootDirectory - Root directory scanned.
+ * @param {number} params.discoveredCount - Total discovered files count.
+ * @param {Array<Object>} params.parsedFiles - Successfully parsed file summaries.
+ * @param {Array<Object>} params.failures - Parse failures.
+ * @param {{ ignored: number, tooLarge: number, limited: number }} [params.skipped] - Skipped files count.
  */
-export function printDiscoveryResults({ rootDirectory, files, skipped = { ignored: 0, tooLarge: 0, limited: 0 } }) {
+export function printReviewResults({
+  rootDirectory,
+  discoveredCount,
+  parsedFiles,
+  failures,
+  skipped = { ignored: 0, tooLarge: 0, limited: 0 }
+}) {
   console.log(`Project root: ${rootDirectory}`);
 
-  if (files.length === 0) {
+  if (discoveredCount === 0) {
     printWarning('No supported files found to review.');
   } else {
-    console.log(`Discovered ${files.length} supported file${files.length === 1 ? '' : 's'}\n`);
-    for (const file of files) {
+    console.log(`Discovered ${discoveredCount} supported file${discoveredCount === 1 ? '' : 's'}`);
+    console.log(`Parsed successfully: ${parsedFiles.length}`);
+    console.log(`Parse failures: ${failures.length}\n`);
+
+    for (const file of parsedFiles) {
       console.log(file.relativePath);
+      console.log(`  Source type: ${file.sourceType}`);
+      console.log(`  Statements: ${file.statementCount}`);
+      console.log(`  Imports: ${file.imports.length}`);
+      console.log(`  Functions: ${file.functions.length}`);
+      console.log(`  Component candidates: ${file.reactComponentCandidates.length}\n`);
+    }
+
+    if (failures.length > 0) {
+      console.log('Parse failures:\n');
+      for (const failure of failures) {
+        console.log(`${failure.relativePath}:${failure.line}:${failure.column}`);
+        console.log(`  ${failure.reason}\n`);
+      }
     }
   }
 
@@ -68,6 +93,6 @@ export function printDiscoveryResults({ rootDirectory, files, skipped = { ignore
   }
 
   if (skipItems.length > 0) {
-    console.log(`\nSkipped: ${skipItems.join(', ')}`);
+    console.log(`Skipped: ${skipItems.join(', ')}`);
   }
 }

@@ -1,27 +1,48 @@
 {
   "name": "ai-code-reviewer",
   "version": "0.1.0",
-  "description": "Production-quality, terminal-first JavaScript and React repository code reviewer powered by static analysis and AI",
-  "private": true,
+  "description": "Terminal-first AI-assisted code reviewer for JavaScript and React projects.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
     "ai-code-reviewer": "./bin/cli.js"
   },
+  "exports": {
+    ".": "./src/index.js"
+  },
   "files": [
     "bin",
-    "src"
+    "src",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "author": "Debdip Bhattacharya",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "javascript",
+    "react",
+    "cli",
+    "static-analysis",
+    "developer-tools"
+  ],
   "scripts": {
     "start": "node bin/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "node --check bin/cli.js"
+    "check": "node bin/cli.js --help",
+    "pack:dry-run": "npm pack --dry-run",
+    "prepack": "npm test && npm run check"
   },
   "dependencies": {
+    "@babel/parser": "^8.0.4",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "fast-glob": "^3.3.3",

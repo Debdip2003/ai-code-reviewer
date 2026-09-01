@@ -13,28 +13,21 @@ export function formatJsonOutput(data) {
 }
 
 /**
- * Formats file discovery results into a standardized JSON string.
+ * Formats review parse results into a standardized JSON string.
  *
  * @param {Object} options
  * @param {string} options.rootDirectory - Root directory scanned.
- * @param {Array<{ relativePath: string, extension: string, sizeBytes: number }>} options.files - Discovered files.
- * @param {{ ignored: number, tooLarge: number, limited: number }} [options.skipped] - Skipped files summary.
+ * @param {Array<Object>} options.files - Successfully parsed file summaries.
+ * @param {Array<Object>} options.failures - Parse failures list.
+ * @param {Object} options.summary - Aggregate count summary.
  * @returns {string} Formatted JSON string.
  */
-export function formatDiscoveryJson({ rootDirectory, files, skipped = { ignored: 0, tooLarge: 0, limited: 0 } }) {
+export function formatParseReviewJson({ rootDirectory, files, failures, summary }) {
   return formatJsonOutput({
-    status: 'scan-complete',
+    status: 'parse-complete',
     rootDirectory,
-    files: files.map((file) => ({
-      relativePath: file.relativePath,
-      extension: file.extension,
-      sizeBytes: file.sizeBytes
-    })),
-    summary: {
-      discovered: files.length,
-      ignored: skipped.ignored,
-      tooLarge: skipped.tooLarge,
-      limited: skipped.limited
-    }
+    files,
+    failures,
+    summary
   });
 }
