@@ -1,0 +1,23 @@
+{
+  "include": [
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.mjs",
+    "**/*.cjs"
+  ],
+  "exclude": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    ".next/**",
+    "public/**",
+    "vendor/**",
+    "**/*.min.js"
+  ],
+  "outputFormat": "terminal",
+  "concurrency": 2,
+  "severityThreshold": "medium",
+  "maxFiles": 100,
+  "maxFileSizeKb": 150
+}

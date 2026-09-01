@@ -1,29 +1,90 @@
 /**
  * Review command handler.
- * CLI command responsible for initiating static and AI-assisted reviews of codebases.
+ * CLI command responsible for initiating file discovery and static/AI code reviews.
  */
 
-import path from 'node:path';
-import { printInfo, printWarning } from '../output/terminal.js';
+import { loadConfig } from '../../config/load-config.js';
+import { discoverFiles } from '../../scanner/discover-files.js';
+import { printDiscoveryResults, printError } from '../output/terminal.js';
+import { formatDiscoveryJson } from '../output/json.js';
 
 /**
  * Executes the review command action.
- * @param {string} [targetPath='.'] - Target file or repository path to review.
+ *
+ * @param {string} [targetPath='.'] - Target directory or repository path to review.
  * @param {Object} [options={}] - Command options.
- * @param {'terminal' | 'json'} [options.format='terminal'] - Output format.
+ * @param {'terminal' | 'json'} [options.format] - Output format override.
+ * @param {string | number} [options.maxFiles] - Maximum files override.
  * @param {boolean} [options.changed=false] - Whether to review only changed files.
  * @returns {Promise<void>}
  */
 export async function reviewAction(targetPath = '.', options = {}) {
-  const resolvedPath = path.resolve(process.cwd(), targetPath);
-  const format = options.format || 'terminal';
-  const changedOnly = Boolean(options.changed);
+  // Check for unsupported changed-only review mode
+  if (options.changed) {
+    printError('Git diff review (--changed) is not implemented yet in this version.');
+    process.exitCode = 1;
+    return;
+  }
 
-  printInfo(`Review command received:`);
-  printInfo(`  Target path:   ${resolvedPath}`);
-  printInfo(`  Output format: ${format}`);
-  printInfo(`  Changed only:  ${changedOnly}`);
-  printWarning(`[Scaffolding Note] File scanning and review engine execution are not yet implemented.`);
+  // Validate format option if provided on CLI
+  if (options.format !== undefined && !['terminal', 'json'].includes(options.format)) {
+    printError(`Invalid format "${options.format}". Allowed formats are: terminal, json.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Validate maxFiles option if provided on CLI
+  let parsedMaxFiles;
+  if (options.maxFiles !== undefined) {
+    parsedMaxFiles = Number(options.maxFiles);
+    if (!Number.isInteger(parsedMaxFiles) || parsedMaxFiles <= 0) {
+      printError('Option --max-files must be a positive integer.');
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  const cliOverrides = {};
+  if (options.format !== undefined) {
+    cliOverrides.outputFormat = options.format;
+  }
+  if (parsedMaxFiles !== undefined) {
+    cliOverrides.maxFiles = parsedMaxFiles;
+  }
+
+  try {
+    const config = await loadConfig({
+      rootDirectory: targetPath,
+      cliOverrides
+    });
+
+    const discoveryResult = await discoverFiles({
+      rootDirectory: config.rootDirectory,
+      includePatterns: config.include,
+      excludePatterns: config.exclude,
+      maxFiles: config.maxFiles,
+      maxFileSizeKb: config.maxFileSizeKb
+    });
+
+    if (config.outputFormat === 'json') {
+      const jsonOutput = formatDiscoveryJson({
+        rootDirectory: discoveryResult.rootDirectory,
+        files: discoveryResult.files,
+        skipped: discoveryResult.skipped
+      });
+      console.log(jsonOutput);
+    } else {
+      printDiscoveryResults({
+        rootDirectory: discoveryResult.rootDirectory,
+        files: discoveryResult.files,
+        skipped: discoveryResult.skipped
+      });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    printError(errorMessage);
+    process.exitCode = 1;
+  }
 }
 
 /**
@@ -35,7 +96,10 @@ export function registerReviewCommand(program) {
     .command('review')
     .description('Review JavaScript and React files in a directory or repository')
     .argument('[path]', 'Path to the directory or file to review', '.')
-    .option('-f, --format <format>', 'Output format (terminal or json)', 'terminal')
+    .option('-f, --format <format>', 'Output format (terminal or json)')
+    .option('-m, --max-files <number>', 'Maximum number of files to discover/review')
     .option('--changed', 'Review only git-changed files', false)
-    .action(reviewAction);
+    .action(async (targetPath, options) => {
+      await reviewAction(targetPath, options);
+    });
 }

@@ -3,15 +3,49 @@
  * CLI command responsible for bootstrapping configuration files in target repositories.
  */
 
-import { printInfo, printWarning } from '../output/terminal.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { DEFAULT_CONFIG, CONFIG_FILE_NAME } from '../../config/defaults.js';
+import { printSuccess, printWarning, printError } from '../output/terminal.js';
 
 /**
  * Executes the init command action.
- * @returns {Promise<void>}
+ * @param {Object} [options={}] - Command options.
+ * @param {boolean} [options.force=false] - Whether to overwrite existing configuration file.
+ * @param {string} [rootDirectory=process.cwd()] - Target root directory where configuration should be initialized.
+ * @returns {Promise<boolean>} True if file was created/overwritten, false otherwise.
  */
-export async function initAction() {
-  printInfo(`Initializing ai-code-reviewer configuration...`);
-  printWarning(`[Scaffolding Note] Interactive configuration initialization will be implemented in a future release.`);
+export async function initAction(options = {}, rootDirectory = process.cwd()) {
+  const force = Boolean(options.force);
+  const resolvedRoot = path.resolve(rootDirectory);
+  const configFilePath = path.join(resolvedRoot, CONFIG_FILE_NAME);
+
+  const initialConfig = {
+    include: [...DEFAULT_CONFIG.include],
+    exclude: [...DEFAULT_CONFIG.exclude],
+    outputFormat: DEFAULT_CONFIG.outputFormat,
+    concurrency: DEFAULT_CONFIG.concurrency,
+    severityThreshold: DEFAULT_CONFIG.severityThreshold,
+    maxFiles: DEFAULT_CONFIG.maxFiles,
+    maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb
+  };
+
+  const fileContent = JSON.stringify(initialConfig, null, 2) + '\n';
+
+  try {
+    await fs.writeFile(configFilePath, fileContent, { flag: force ? 'w' : 'wx' });
+    printSuccess(`Created configuration file at ${configFilePath}`);
+    return true;
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      printWarning(
+        `Configuration file already exists at "${configFilePath}". Use --force to overwrite.`
+      );
+      return false;
+    }
+    printError(`Failed to initialize configuration file: ${error.message}`);
+    throw error;
+  }
 }
 
 /**
@@ -22,5 +56,8 @@ export function registerInitCommand(program) {
   program
     .command('init')
     .description('Initialize default ai-code-reviewer configuration in the current repository')
-    .action(initAction);
+    .option('-f, --force', 'Overwrite existing configuration file if present', false)
+    .action(async (options) => {
+      await initAction(options);
+    });
 }
