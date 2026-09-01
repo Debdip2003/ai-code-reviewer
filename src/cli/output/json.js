@@ -13,20 +13,20 @@ export function formatJsonOutput(data) {
 }
 
 /**
- * Formats review parse results into a standardized JSON string.
+ * Formats full review engine results into a standardized JSON string.
  *
  * @param {Object} options
  * @param {string} options.rootDirectory - Root directory scanned.
- * @param {Array<Object>} options.files - Successfully parsed file summaries.
- * @param {Array<Object>} options.failures - Parse failures list.
+ * @param {Array<Object>} options.findings - Normalized review findings.
+ * @param {Array<Object>} options.failures - Discovery, parse, or lint failures.
  * @param {Object} options.summary - Aggregate count summary.
  * @returns {string} Formatted JSON string.
  */
-export function formatParseReviewJson({ rootDirectory, files, failures, summary }) {
+export function formatReviewReportJson({ rootDirectory, findings, failures, summary }) {
   return formatJsonOutput({
-    status: 'parse-complete',
+    status: 'review-complete',
     rootDirectory,
-    files,
+    findings,
     failures,
     summary
   });

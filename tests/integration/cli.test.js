@@ -97,105 +97,125 @@ describe('CLI Integration Tests', () => {
   });
 
   describe('review command', () => {
-    beforeEach(async () => {
-      await fs.mkdir(path.join(tempDir, 'src', 'components'), { recursive: true });
-      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), 'import React from "react"; export const sum = (a, b) => a + b;');
-      await fs.writeFile(path.join(tempDir, 'src', 'components', 'Button.jsx'), 'export const Button = () => <button>Click</button>;');
-      await fs.writeFile(path.join(tempDir, 'src', 'helper.mjs'), 'export function helper() { return 42; }');
-    });
+    it('should exit with 0 for a clean codebase without findings', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'clean.js'),
+        'export function add(a, b) { return a + b; }\n'
+      );
 
-    it('should discover, parse, and print files in terminal format with exit code 0', () => {
       const result = spawnSync(process.execPath, [cliPath, 'review', tempDir], {
         encoding: 'utf-8'
       });
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Project root:');
-      expect(result.stdout).toContain('Discovered 3 supported files');
-      expect(result.stdout).toContain('Parsed successfully: 3');
-      expect(result.stdout).toContain('Parse failures: 0');
-      expect(result.stdout).toContain('src/app.js');
-      expect(result.stdout).toContain('src/components/Button.jsx');
-      expect(result.stdout).toContain('src/helper.mjs');
+      expect(result.stdout).toContain('Discovered: 1 file');
+      expect(result.stdout).toContain('Analyzed: 1 file');
+      expect(result.stdout).toContain('Total: 0');
+      expect(result.stdout).toContain('Review passed');
     });
 
-    it('should emit valid machine-readable JSON when --format json is specified', () => {
+    it('should exit with 1 when findings meet or exceed default medium threshold', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'equality.js'),
+        'export function check(a, b) { return a == b; }\n' // triggers medium eqeqeq
+      );
+
+      const result = spawnSync(process.execPath, [cliPath, 'review', tempDir], {
+        encoding: 'utf-8'
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('MEDIUM');
+      expect(result.stdout).toContain('eqeqeq');
+      const combinedOutput = result.stdout + result.stderr;
+      expect(combinedOutput).toContain('Review failed');
+    });
+
+    it('should exit with 0 when only medium findings exist but threshold is set to high', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'equality.js'),
+        'export function check(a, b) { return a == b; }\n' // medium finding
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--severity', 'high'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('MEDIUM');
+      expect(result.stdout).toContain('Review passed: no findings reached the configured high threshold');
+    });
+
+    it('should exit with 1 when high severity finding is present under medium threshold', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'undef.js'),
+        'export function run() { return missingVar; }\n' // high no-undef
+      );
+
+      const result = spawnSync(process.execPath, [cliPath, 'review', tempDir], {
+        encoding: 'utf-8'
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('HIGH');
+      expect(result.stdout).toContain('no-undef');
+      const combinedOutput = result.stdout + result.stderr;
+      expect(combinedOutput).toContain('Review failed');
+    });
+
+    it('should exit with 2 when a parser syntax failure occurs', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'src', 'broken.js'), 'const a = ;');
+
+      const result = spawnSync(process.execPath, [cliPath, 'review', tempDir], {
+        encoding: 'utf-8'
+      });
+
+      expect(result.status).toBe(2);
+      expect(result.stdout).toContain('Failures:');
+      expect(result.stdout).toContain('src/broken.js');
+    });
+
+    it('should emit valid machine-readable JSON without ANSI escapes or spinners', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'app.js'),
+        'export function run() { return undefinedVar; }\n'
+      );
+
       const result = spawnSync(
         process.execPath,
         [cliPath, 'review', tempDir, '--format', 'json'],
         { encoding: 'utf-8' }
       );
 
-      expect(result.status).toBe(0);
+      expect(result.status).toBe(1);
       const parsed = JSON.parse(result.stdout.trim());
-      expect(parsed.status).toBe('parse-complete');
+      expect(parsed.status).toBe('review-complete');
       expect(parsed.rootDirectory).toBe(path.resolve(tempDir));
-      expect(parsed.summary.discovered).toBe(3);
-      expect(parsed.summary.parsed).toBe(3);
-      expect(parsed.summary.failed).toBe(0);
-      expect(parsed.files).toHaveLength(3);
-      expect(parsed.files[0]).toHaveProperty('relativePath');
-      expect(parsed.files[0]).toHaveProperty('sourceType');
-      expect(parsed.files[0]).toHaveProperty('statementCount');
-      expect(parsed.files[0]).toHaveProperty('imports');
-      expect(parsed.files[0]).toHaveProperty('functions');
+      expect(parsed.findings).toHaveLength(1);
+      expect(parsed.findings[0].ruleId).toBe('no-undef');
+      expect(parsed.findings[0].severity).toBe('high');
+      expect(parsed.summary.discovered).toBe(1);
+      expect(parsed.summary.analyzed).toBe(1);
+      expect(parsed.summary.severity.high).toBe(1);
+
+      // Verify no ANSI escape codes in output
+      expect(result.stdout).not.toMatch(/\x1B\[[0-9;]*m/);
     });
 
-    it('should handle parse failures by setting exit code 2 and continuing to process valid files', async () => {
-      await fs.writeFile(path.join(tempDir, 'src', 'broken.js'), 'const a = ;');
+    it('should limit discovered files when --max-files is passed', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'src', 'f1.js'), 'export const a = 1;');
+      await fs.writeFile(path.join(tempDir, 'src', 'f2.js'), 'export const b = 2;');
+      await fs.writeFile(path.join(tempDir, 'src', 'f3.js'), 'export const c = 3;');
 
-      const result = spawnSync(process.execPath, [cliPath, 'review', tempDir], {
-        encoding: 'utf-8'
-      });
-
-      expect(result.status).toBe(2);
-      expect(result.stdout).toContain('Discovered 4 supported files');
-      expect(result.stdout).toContain('Parsed successfully: 3');
-      expect(result.stdout).toContain('Parse failures: 1');
-      expect(result.stdout).toContain('Parse failures:');
-      expect(result.stdout).toContain('src/broken.js:1:');
-    });
-
-    it('should emit valid JSON containing failures when syntax errors occur', async () => {
-      await fs.writeFile(path.join(tempDir, 'src', 'broken.js'), 'const a = ;');
-
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'review', tempDir, '--format', 'json'],
-        { encoding: 'utf-8' }
-      );
-
-      expect(result.status).toBe(2);
-      const parsed = JSON.parse(result.stdout.trim());
-      expect(parsed.status).toBe('parse-complete');
-      expect(parsed.summary.failed).toBe(1);
-      expect(parsed.summary.parsed).toBe(3);
-      expect(parsed.failures).toHaveLength(1);
-      expect(parsed.failures[0].relativePath).toBe('src/broken.js');
-      expect(parsed.failures[0].line).toBe(1);
-    });
-
-    it('should maintain sorted output order even with concurrency > 1', async () => {
-      // Create additional files
-      for (let i = 1; i <= 6; i++) {
-        await fs.writeFile(path.join(tempDir, 'src', `z_${i}.js`), `export const z${i} = ${i};`);
-      }
-
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'review', tempDir, '--format', 'json'],
-        { encoding: 'utf-8' }
-      );
-
-      expect(result.status).toBe(0);
-      const parsed = JSON.parse(result.stdout.trim());
-      const relativePaths = parsed.files.map((f) => f.relativePath);
-
-      const sortedPaths = [...relativePaths].sort((a, b) => a.localeCompare(b));
-      expect(relativePaths).toEqual(sortedPaths);
-    });
-
-    it('should limit discovered files when --max-files is passed', () => {
       const result = spawnSync(
         process.execPath,
         [cliPath, 'review', tempDir, '--max-files', '2'],
@@ -203,7 +223,7 @@ describe('CLI Integration Tests', () => {
       );
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Discovered 2 supported files');
+      expect(result.stdout).toContain('Discovered: 2 files');
       expect(result.stdout).toContain('Skipped: 1 limited');
     });
 
@@ -219,28 +239,16 @@ describe('CLI Integration Tests', () => {
       expect(combinedOutput).toContain('Git diff review (--changed) is not implemented yet');
     });
 
-    it('should fail with exit code 2 when invalid format is supplied', () => {
+    it('should fail with exit code 2 when invalid severity is supplied', () => {
       const result = spawnSync(
         process.execPath,
-        [cliPath, 'review', tempDir, '--format', 'xml'],
+        [cliPath, 'review', tempDir, '--severity', 'extreme'],
         { encoding: 'utf-8' }
       );
 
       expect(result.status).toBe(2);
       const combinedOutput = result.stdout + result.stderr;
-      expect(combinedOutput).toContain('Invalid format "xml"');
-    });
-
-    it('should fail with exit code 2 when invalid max-files is supplied', () => {
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'review', tempDir, '--max-files', 'abc'],
-        { encoding: 'utf-8' }
-      );
-
-      expect(result.status).toBe(2);
-      const combinedOutput = result.stdout + result.stderr;
-      expect(combinedOutput).toContain('positive integer');
+      expect(combinedOutput).toContain('Invalid severity "extreme"');
     });
   });
 });

@@ -38,61 +38,113 @@ export function printError(message) {
 }
 
 /**
- * Formats and prints review & parse results to the terminal.
+ * Formats severity label with color for terminal display.
+ * @param {string} severity
+ * @returns {string}
+ */
+function formatSeverityTag(severity) {
+  switch (severity) {
+    case 'critical':
+      return chalk.bgRed.white.bold(' CRITICAL ');
+    case 'high':
+      return chalk.red.bold(' HIGH ');
+    case 'medium':
+      return chalk.yellow.bold(' MEDIUM ');
+    case 'low':
+      return chalk.blue.bold(' LOW ');
+    default:
+      return ` ${severity.toUpperCase()} `;
+  }
+}
+
+/**
+ * Formats and prints the complete review results report to the terminal.
  *
  * @param {Object} params
- * @param {string} params.rootDirectory - Root directory scanned.
- * @param {number} params.discoveredCount - Total discovered files count.
- * @param {Array<Object>} params.parsedFiles - Successfully parsed file summaries.
- * @param {Array<Object>} params.failures - Parse failures.
- * @param {{ ignored: number, tooLarge: number, limited: number }} [params.skipped] - Skipped files count.
+ * @param {string} params.rootDirectory - Root directory path.
+ * @param {number} params.discoveredCount - Discovered files count.
+ * @param {number} params.analyzedCount - Analyzed files count.
+ * @param {Array<Object>} [params.failures=[]] - Failures during read/parse/lint.
+ * @param {Array<Object>} [params.findings=[]] - Normalized findings list.
+ * @param {Object} params.summary - Severity and status summary.
+ * @param {string} [params.threshold='medium'] - Configured severity threshold.
+ * @param {boolean} [params.failedThreshold=false] - Whether threshold was triggered.
+ * @param {{ ignored: number, tooLarge: number, limited: number }} [params.skipped] - Skipped count.
  */
-export function printReviewResults({
+export function printReviewTerminalReport({
   rootDirectory,
   discoveredCount,
-  parsedFiles,
-  failures,
+  analyzedCount,
+  failures = [],
+  findings = [],
+  summary,
+  threshold = 'medium',
+  failedThreshold = false,
   skipped = { ignored: 0, tooLarge: 0, limited: 0 }
 }) {
-  console.log(`Project root: ${rootDirectory}`);
+  console.log(`Reviewing project: ${rootDirectory}\n`);
+  console.log(`Discovered: ${discoveredCount} file${discoveredCount === 1 ? '' : 's'}`);
+  console.log(`Analyzed: ${analyzedCount} file${analyzedCount === 1 ? '' : 's'}`);
+  console.log(`Failures: ${failures.length}\n`);
 
-  if (discoveredCount === 0) {
-    printWarning('No supported files found to review.');
-  } else {
-    console.log(`Discovered ${discoveredCount} supported file${discoveredCount === 1 ? '' : 's'}`);
-    console.log(`Parsed successfully: ${parsedFiles.length}`);
-    console.log(`Parse failures: ${failures.length}\n`);
-
-    for (const file of parsedFiles) {
-      console.log(file.relativePath);
-      console.log(`  Source type: ${file.sourceType}`);
-      console.log(`  Statements: ${file.statementCount}`);
-      console.log(`  Imports: ${file.imports.length}`);
-      console.log(`  Functions: ${file.functions.length}`);
-      console.log(`  Component candidates: ${file.reactComponentCandidates.length}\n`);
+  if (findings.length > 0) {
+    // Group findings by relativePath
+    const findingsByFile = new Map();
+    for (const finding of findings) {
+      if (!findingsByFile.has(finding.relativePath)) {
+        findingsByFile.set(finding.relativePath, []);
+      }
+      findingsByFile.get(finding.relativePath).push(finding);
     }
 
-    if (failures.length > 0) {
-      console.log('Parse failures:\n');
-      for (const failure of failures) {
-        console.log(`${failure.relativePath}:${failure.line}:${failure.column}`);
-        console.log(`  ${failure.reason}\n`);
+    for (const [relativePath, fileFindings] of findingsByFile) {
+      console.log(chalk.bold.underline(relativePath));
+      console.log('');
+
+      for (const finding of fileFindings) {
+        const tag = formatSeverityTag(finding.severity);
+        const rule = chalk.dim(finding.ruleId);
+        const loc = chalk.cyan(`Line ${finding.lineStart}:${finding.columnStart}`);
+
+        console.log(`  ${tag} ${rule}  ${loc}`);
+        console.log(`  ${finding.message}\n`);
       }
     }
   }
 
-  const skipItems = [];
-  if (skipped.ignored > 0) {
-    skipItems.push(`${skipped.ignored} ignored`);
-  }
-  if (skipped.tooLarge > 0) {
-    skipItems.push(`${skipped.tooLarge} too large`);
-  }
-  if (skipped.limited > 0) {
-    skipItems.push(`${skipped.limited} limited`);
+  if (failures.length > 0) {
+    console.log(chalk.red.bold('Failures:\n'));
+    for (const failure of failures) {
+      const stage = failure.stage ? ` (${failure.stage})` : '';
+      console.log(`  ${failure.relativePath}${stage}: Line ${failure.line}:${failure.column}`);
+      console.log(`  ${failure.reason}\n`);
+    }
   }
 
+  const sevCounts = summary.severity || { critical: 0, high: 0, medium: 0, low: 0 };
+  console.log('Summary\n');
+  console.log(`Critical: ${sevCounts.critical || 0}`);
+  console.log(`High: ${sevCounts.high || 0}`);
+  console.log(`Medium: ${sevCounts.medium || 0}`);
+  console.log(`Low: ${sevCounts.low || 0}`);
+  console.log(`Total: ${findings.length}\n`);
+
+  const skipItems = [];
+  if (skipped.ignored > 0) skipItems.push(`${skipped.ignored} ignored`);
+  if (skipped.tooLarge > 0) skipItems.push(`${skipped.tooLarge} too large`);
+  if (skipped.limited > 0) skipItems.push(`${skipped.limited} limited`);
+
   if (skipItems.length > 0) {
-    console.log(`Skipped: ${skipItems.join(', ')}`);
+    console.log(`Skipped: ${skipItems.join(', ')}\n`);
+  }
+
+  if (failedThreshold) {
+    printError(`Review failed: findings reached the configured ${threshold} threshold.`);
+  } else if (failures.length > 0) {
+    printError(`Review completed with ${failures.length} execution/parse failure${failures.length === 1 ? '' : 's'}.`);
+  } else if (discoveredCount === 0) {
+    printWarning('No supported files found to review.');
+  } else {
+    printSuccess(`Review passed: no findings reached the configured ${threshold} threshold.`);
   }
 }

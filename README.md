@@ -1,26 +1,30 @@
 # ai-code-reviewer
 
-A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using static analysis and AI.
+A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using deterministic static analysis and AI.
 
 ## Project Purpose
 
-`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, architectural anti-patterns, quality issues, and security vulnerabilities. It combines deterministic static parsing with targeted AI-powered insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, architectural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing and ESLint analysis with targeted insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
 
-## Current Development Status
+## Review Pipeline
 
-> **Note:** The current phase implements the configuration loader, ignore-rule processing, JavaScript/JSX AST parsing using Babel, and bounded concurrency scanning.
->
-> **Current Limitations:**
-> * **JavaScript & JSX Only:** Supported extensions are `.js`, `.jsx`, `.mjs`, and `.cjs`. TypeScript and Flow syntax are not yet supported.
-> * **No AI Review Engine Yet:** Static and AI code review rules will be connected in upcoming releases.
-> * **No Git Changed-File Review Yet:** The `--changed` differential review flag is reserved for a future release.
-> * **Zero Code Modification:** `ai-code-reviewer` operates strictly in read-only mode and never modifies source files.
-> * **Code Splitting:** Multi-pass chunk review architecture for ultra-large enterprise codebases is planned separately for V2.
+```text
+Configuration
+→ File discovery
+→ JavaScript/JSX parsing (Babel)
+→ ESLint static analysis
+→ Finding normalization
+→ Severity filtering & deduplication
+→ Terminal or JSON report
+```
 
-## Node.js Requirement
+## Current Status & Capabilities
 
-* **Node.js**: Version `20.0.0` or newer is required (`"engines": { "node": ">=20" }`).
-* **Module System**: Pure ES Modules (`"type": "module"`).
+* **Deterministic Static Analysis Active:** Evaluates JavaScript and React JSX files using internal ESLint rules focused on bug prevention.
+* **Isolated Configuration:** Operates with a controlled internal flat configuration; the target repository's `.eslintrc` or `eslint.config.js` is **never loaded**.
+* **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** source files.
+* **AI Provider Integration:** AI-powered reasoning and semantic recommendations will be integrated in upcoming releases.
+* **Git Diff Analysis:** Differential review via `--changed` is reserved for a future release.
 
 ## Supported File Extensions
 
@@ -43,100 +47,101 @@ npm install --save-dev ai-code-reviewer
 npx ai-code-reviewer review .
 ```
 
-### Local Development / Linking
+### CI / Automation Execution
 
 ```bash
-# Clone and setup locally
-git clone <repository-url>
-cd ai-code-reviewer
-npm install
-
-# Link package globally for local CLI testing
-npm link
-
-# Test CLI
-ai-code-reviewer --help
+npx ai-code-reviewer review . --format json --severity high
 ```
 
 ## CLI Usage
 
 ### Initialize Configuration
 
-Bootstrap a configuration file in the project root:
+Bootstrap `.aireviewerrc.json` in the project root:
 
 ```bash
-# Initialize .aireviewerrc.json
+# Initialize configuration
 ai-code-reviewer init
 
-# Force overwrite an existing configuration file
+# Force overwrite existing configuration
 ai-code-reviewer init --force
 ```
 
-### Review & Parse Files
+### Review & Analyze Files
 
 ```bash
-# Scan and parse files in the current repository
+# Review current repository with default medium threshold
 ai-code-reviewer review .
 
-# Scan and parse a specific subdirectory
-ai-code-reviewer review ./src
+# Review a specific subdirectory with high severity threshold
+ai-code-reviewer review ./src --severity high
 
-# Emit machine-readable JSON output
+# Emit machine-readable JSON report
 ai-code-reviewer review . --format json
 
-# Limit file discovery and review count
+# Limit file discovery count
 ai-code-reviewer review ./src --max-files 25
 ```
 
-### JSON Output Example
+## Exit Codes
+
+* **`0`**: Analysis completed successfully and no finding met or exceeded the configured severity threshold.
+* **`1`**: Review threshold triggered (at least one finding met or exceeded the severity threshold).
+* **`2`**: Configuration, file scanning, reading, Babel parsing, or analyzer failure.
+
+## Severity Levels & Categories
+
+### Finding Severities
+
+* **`critical`**: Reserved for high-confidence security and data loss vulnerabilities.
+* **`high`**: Likely runtime errors or severe behavioral bugs (e.g., `no-undef`, `no-unreachable`, `no-dupe-keys`).
+* **`medium`**: Suspicious logic or maintainability issues that commonly cause defects (e.g., `eqeqeq`, `no-unused-vars`, `no-fallthrough`).
+* **`low`**: Minor maintainability observations with limited functional impact.
+
+### Finding Categories
+
+* `correctness` – Runtime correctness and logic flaws
+* `security` – Security vulnerabilities and hazardous patterns
+* `performance` – Performance bottlenecks and resource leaks
+* `maintainability` – Code maintainability and unused structures
+
+## JSON Output Example
 
 ```json
 {
-  "status": "parse-complete",
+  "status": "review-complete",
   "rootDirectory": "/path/to/project",
-  "files": [
+  "findings": [
     {
-      "relativePath": "src/App.jsx",
-      "sourceType": "module",
-      "statementCount": 8,
-      "imports": [
-        {
-          "source": "react",
-          "specifierCount": 2,
-          "line": 1
-        }
-      ],
-      "exports": [
-        {
-          "kind": "default",
-          "name": "App",
-          "line": 12
-        }
-      ],
-      "functions": [
-        {
-          "name": "App",
-          "kind": "function-declaration",
-          "async": false,
-          "line": 12
-        }
-      ],
-      "classes": [],
-      "reactComponentCandidates": [
-        {
-          "name": "App",
-          "kind": "function",
-          "line": 12
-        }
-      ]
+      "source": "eslint",
+      "ruleId": "no-undef",
+      "severity": "high",
+      "category": "correctness",
+      "title": "Undefined identifier",
+      "message": "'total' is not defined.",
+      "relativePath": "src/cart.js",
+      "lineStart": 12,
+      "columnStart": 5,
+      "lineEnd": 12,
+      "columnEnd": 10,
+      "suggestion": null,
+      "fixable": false
     }
   ],
   "failures": [],
   "summary": {
     "discovered": 1,
     "parsed": 1,
+    "analyzed": 1,
     "failed": 0,
-    "ignored": 14,
+    "findings": 1,
+    "severity": {
+      "critical": 0,
+      "high": 1,
+      "medium": 0,
+      "low": 0
+    },
+    "ignored": 0,
     "tooLarge": 0,
     "limited": 0
   }
@@ -146,8 +151,6 @@ ai-code-reviewer review ./src --max-files 25
 ## Configuration
 
 ### Configuration File (`.aireviewerrc.json`)
-
-Configure scanning and review settings in `.aireviewerrc.json`:
 
 ```json
 {
@@ -175,84 +178,47 @@ Configure scanning and review settings in `.aireviewerrc.json`:
 }
 ```
 
-### Ignore Rule Precedence
-
-`ai-code-reviewer` combines ignore rules from multiple sources:
-1. Built-in and configured `exclude` patterns
-2. Root `.gitignore` rules
-3. Root `.aireviewerignore` rules (dedicated ignore rules for reviewer)
-4. Negation patterns (e.g. `!src/generated/keep.js`) are supported
-
 ### Configuration Hierarchy
 
 ```text
-DEFAULT_CONFIG  <  .aireviewerrc.json  <  CLI Flags (--format, --max-files)
+DEFAULT_CONFIG  <  .aireviewerrc.json  <  CLI Flags (--format, --max-files, --severity)
 ```
 
 ## Programmatic API
-
-You can import and use `ai-code-reviewer` programmatically in Node.js applications:
 
 ```js
 import {
   loadConfig,
   discoverFiles,
   parseJavaScript,
-  parseFile,
-  summarizeAst,
-  DEFAULT_CONFIG
+  analyzeWithEslint,
+  reviewRepository
 } from 'ai-code-reviewer';
 
-// 1. Load configuration
-const config = await loadConfig({ rootDirectory: process.cwd() });
-
-// 2. Discover files
-const { files } = await discoverFiles({
-  rootDirectory: config.rootDirectory,
-  includePatterns: config.include,
-  excludePatterns: config.exclude
+// Run complete repository review
+const result = await reviewRepository({
+  rootDirectory: process.cwd(),
+  config: { severityThreshold: 'high' }
 });
 
-// 3. Parse a file and extract summary
-const { ast } = await parseFile({
-  absolutePath: files[0].absolutePath,
-  relativePath: files[0].relativePath
-});
-
-const summary = summarizeAst({ ast, relativePath: files[0].relativePath });
-console.log(summary);
+console.log(`Discovered ${result.summary.discovered} files with ${result.findings.length} findings.`);
 ```
 
-## Development & Publishing Checklist
-
-### Development Commands
-
-* `npm test` – Run test suite with Vitest
-* `npm run test:watch` – Run Vitest in interactive watch mode
-* `npm run check` – Verify CLI executable invocation
-* `npm run pack:dry-run` – Preview package tarball contents
-
-### npm Publishing Workflow
-
-> **Warning:** Do not run `npm publish` until the package name, contents, version, and npm account have been verified.
-
-Before publishing:
+## Publishing Checklist
 
 ```bash
-# 1. Log in to your npm account
+# 1. Log in to npm account
 npm login
-
-# 2. Confirm your authenticated user
 npm whoami
 
-# 3. Run all automated tests and syntax checks
+# 2. Run automated tests and validation
 npm test
 npm run check
 
-# 4. Preview the tarball archive contents
+# 3. Preview tarball contents
 npm run pack:dry-run
 
-# 5. Publish to npm registry (use beta tag for pre-releases)
+# 4. Publish to registry
 npm publish --tag beta
 ```
 

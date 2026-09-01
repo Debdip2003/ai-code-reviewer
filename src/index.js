@@ -14,3 +14,19 @@ export { discoverFiles } from './scanner/discover-files.js';
 export { parseJavaScript, JavaScriptParseError } from './parser/parse-javascript.js';
 export { parseFile } from './parser/parse-file.js';
 export { summarizeAst } from './parser/summarize-ast.js';
+
+// Analyzer
+export { analyzeWithEslint, EslintAnalysisError } from './analyzers/eslint-analyzer.js';
+
+// Review Model & Utilities
+export { FindingSchema, FindingSeverity, validateFinding } from './review/finding.js';
+export {
+  SEVERITY_ORDER,
+  SEVERITY_LEVELS,
+  isAtOrAboveSeverity,
+  filterFindingsBySeverity,
+  countFindingsBySeverity,
+  sortFindings
+} from './review/severity.js';
+export { deduplicateFindings } from './review/deduplicate.js';
+export { reviewRepository } from './review/review-engine.js';
