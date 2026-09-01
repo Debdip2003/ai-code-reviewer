@@ -1,0 +1,33 @@
+{
+  "name": "ai-code-reviewer",
+  "version": "0.1.0",
+  "description": "Production-quality, terminal-first JavaScript and React repository code reviewer powered by static analysis and AI",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "ai-code-reviewer": "./bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "node --check bin/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "ora": "^8.2.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.7"
+  }
+}
