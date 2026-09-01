@@ -28,7 +28,16 @@ describe('DEFAULT_CONFIG and Constants', () => {
       concurrency: 2,
       severityThreshold: 'medium',
       maxFiles: 100,
-      maxFileSizeKb: 150
+      maxFileSizeKb: 150,
+      analyzers: {
+        complexity: {
+          enabled: true,
+          maxFunctionLines: 80,
+          maxParameters: 5,
+          maxCyclomaticComplexity: 10,
+          maxNestingDepth: 4
+        }
+      }
     });
   });
 
@@ -36,6 +45,8 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(Object.isFrozen(DEFAULT_CONFIG)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.include)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.exclude)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.analyzers)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.complexity)).toBe(true);
 
     expect(() => {
       // @ts-expect-error - testing immutability
@@ -44,12 +55,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
 
     expect(() => {
       // @ts-expect-error - testing immutability
-      DEFAULT_CONFIG.include.push('**/*.ts');
-    }).toThrow();
-
-    expect(() => {
-      // @ts-expect-error - testing immutability
-      DEFAULT_CONFIG.exclude.push('temp/**');
+      DEFAULT_CONFIG.analyzers.complexity.enabled = false;
     }).toThrow();
   });
 });

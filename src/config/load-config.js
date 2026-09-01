@@ -27,47 +27,92 @@ export class ConfigurationError extends Error {
 }
 
 /**
+ * Zod schema for complexity analyzer configuration.
+ */
+export const complexityConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    maxFunctionLines: z
+      .number()
+      .int('maxFunctionLines must be an integer')
+      .min(10, 'maxFunctionLines must be at least 10')
+      .max(1000, 'maxFunctionLines cannot exceed 1000')
+      .optional(),
+    maxParameters: z
+      .number()
+      .int('maxParameters must be an integer')
+      .min(1, 'maxParameters must be at least 1')
+      .max(20, 'maxParameters cannot exceed 20')
+      .optional(),
+    maxCyclomaticComplexity: z
+      .number()
+      .int('maxCyclomaticComplexity must be an integer')
+      .min(1, 'maxCyclomaticComplexity must be at least 1')
+      .max(100, 'maxCyclomaticComplexity cannot exceed 100')
+      .optional(),
+    maxNestingDepth: z
+      .number()
+      .int('maxNestingDepth must be an integer')
+      .min(1, 'maxNestingDepth must be at least 1')
+      .max(20, 'maxNestingDepth cannot exceed 20')
+      .optional()
+  })
+  .strict();
+
+/**
+ * Zod schema for analyzers configuration group.
+ */
+export const analyzersConfigSchema = z
+  .object({
+    complexity: complexityConfigSchema.optional()
+  })
+  .strict();
+
+/**
  * Zod schema for validating user-provided configuration objects.
  * All properties are optional to allow partial overrides of defaults.
  * Unknown properties are rejected.
  */
-export const userConfigSchema = z.object({
-  include: z
-    .array(z.string().min(1, 'Include pattern cannot be empty string'))
-    .min(1, 'Include patterns must contain at least one pattern')
-    .optional(),
-  exclude: z
-    .array(z.string().min(1, 'Exclude pattern cannot be empty string'))
-    .optional(),
-  outputFormat: z
-    .enum(['terminal', 'json'], {
-      errorMap: () => ({ message: "outputFormat must be either 'terminal' or 'json'" })
-    })
-    .optional(),
-  concurrency: z
-    .number()
-    .int('concurrency must be an integer')
-    .min(1, 'concurrency must be at least 1')
-    .max(10, 'concurrency cannot exceed 10')
-    .optional(),
-  severityThreshold: z
-    .enum(['low', 'medium', 'high', 'critical'], {
-      errorMap: () => ({ message: "severityThreshold must be 'low', 'medium', 'high', or 'critical'" })
-    })
-    .optional(),
-  maxFiles: z
-    .number()
-    .int('maxFiles must be an integer')
-    .positive('maxFiles must be a positive integer')
-    .max(100000, 'maxFiles cannot exceed 100000')
-    .optional(),
-  maxFileSizeKb: z
-    .number()
-    .int('maxFileSizeKb must be an integer')
-    .positive('maxFileSizeKb must be a positive integer')
-    .max(500000, 'maxFileSizeKb cannot exceed 500000')
-    .optional()
-}).strict();
+export const userConfigSchema = z
+  .object({
+    include: z
+      .array(z.string().min(1, 'Include pattern cannot be empty string'))
+      .min(1, 'Include patterns must contain at least one pattern')
+      .optional(),
+    exclude: z
+      .array(z.string().min(1, 'Exclude pattern cannot be empty string'))
+      .optional(),
+    outputFormat: z
+      .enum(['terminal', 'json'], {
+        errorMap: () => ({ message: "outputFormat must be either 'terminal' or 'json'" })
+      })
+      .optional(),
+    concurrency: z
+      .number()
+      .int('concurrency must be an integer')
+      .min(1, 'concurrency must be at least 1')
+      .max(10, 'concurrency cannot exceed 10')
+      .optional(),
+    severityThreshold: z
+      .enum(['low', 'medium', 'high', 'critical'], {
+        errorMap: () => ({ message: "severityThreshold must be 'low', 'medium', 'high', or 'critical'" })
+      })
+      .optional(),
+    maxFiles: z
+      .number()
+      .int('maxFiles must be an integer')
+      .positive('maxFiles must be a positive integer')
+      .max(100000, 'maxFiles cannot exceed 100000')
+      .optional(),
+    maxFileSizeKb: z
+      .number()
+      .int('maxFileSizeKb must be an integer')
+      .positive('maxFileSizeKb must be a positive integer')
+      .max(500000, 'maxFileSizeKb cannot exceed 500000')
+      .optional(),
+    analyzers: analyzersConfigSchema.optional()
+  })
+  .strict();
 
 /**
  * Formats Zod validation issues into a human-readable message.
@@ -94,7 +139,11 @@ function stripUndefined(obj = {}) {
   const clean = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      clean[key] = value;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        clean[key] = stripUndefined(value);
+      } else {
+        clean[key] = value;
+      }
     }
   }
   return clean;
@@ -164,6 +213,23 @@ export async function loadConfig(options = {}) {
   const mergedInclude = cleanCliOverrides.include ?? fileConfig.include ?? DEFAULT_CONFIG.include;
   const mergedExclude = cleanCliOverrides.exclude ?? fileConfig.exclude ?? DEFAULT_CONFIG.exclude;
 
+  const defaultComplexity = DEFAULT_CONFIG.analyzers.complexity;
+  const fileComplexity = fileConfig.analyzers?.complexity || {};
+  const cliComplexity = cleanCliOverrides.analyzers?.complexity || {};
+
+  const mergedComplexity = {
+    enabled: cliComplexity.enabled ?? fileComplexity.enabled ?? defaultComplexity.enabled,
+    maxFunctionLines:
+      cliComplexity.maxFunctionLines ?? fileComplexity.maxFunctionLines ?? defaultComplexity.maxFunctionLines,
+    maxParameters: cliComplexity.maxParameters ?? fileComplexity.maxParameters ?? defaultComplexity.maxParameters,
+    maxCyclomaticComplexity:
+      cliComplexity.maxCyclomaticComplexity ??
+      fileComplexity.maxCyclomaticComplexity ??
+      defaultComplexity.maxCyclomaticComplexity,
+    maxNestingDepth:
+      cliComplexity.maxNestingDepth ?? fileComplexity.maxNestingDepth ?? defaultComplexity.maxNestingDepth
+  };
+
   return {
     include: [...mergedInclude],
     exclude: [...mergedExclude],
@@ -172,6 +238,9 @@ export async function loadConfig(options = {}) {
     severityThreshold: cleanCliOverrides.severityThreshold ?? fileConfig.severityThreshold ?? DEFAULT_CONFIG.severityThreshold,
     maxFiles: cleanCliOverrides.maxFiles ?? fileConfig.maxFiles ?? DEFAULT_CONFIG.maxFiles,
     maxFileSizeKb: cleanCliOverrides.maxFileSizeKb ?? fileConfig.maxFileSizeKb ?? DEFAULT_CONFIG.maxFileSizeKb,
+    analyzers: {
+      complexity: mergedComplexity
+    },
     rootDirectory
   };
 }

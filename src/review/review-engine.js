@@ -1,13 +1,14 @@
 /**
  * Core review engine orchestrator.
  * Coordinates repository file discovery, Babel AST parsing, ESLint static analysis,
- * finding deduplication, and severity tallying.
+ * custom AST complexity analysis, finding deduplication, and severity tallying.
  */
 
 import { discoverFiles } from '../scanner/discover-files.js';
 import { parseFile } from '../parser/parse-file.js';
 import { summarizeAst } from '../parser/summarize-ast.js';
 import { analyzeWithEslint } from '../analyzers/eslint-analyzer.js';
+import { analyzeComplexity } from '../analyzers/complexity-analyzer.js';
 import { deduplicateFindings } from './deduplicate.js';
 import { sortFindings, countFindingsBySeverity } from './severity.js';
 
@@ -50,8 +51,8 @@ export async function mapConcurrent(items, concurrency, fn) {
  * @param {import('../config/defaults.js').ReviewerConfig & { rootDirectory?: string }} [options.config] - Resolved reviewer configuration.
  * @returns {Promise<{
  *   rootDirectory: string,
- *   files: Array<{ relativePath: string, astSummary: Object, findings: Array<Object> }>,
- *   failures: Array<{ relativePath: string, stage: 'read' | 'parse' | 'eslint', line: number, column: number, reason: string }>,
+ *   files: Array<{ relativePath: string, astSummary: Object, metrics: { functions: Array<Object> }, findings: Array<Object> }>,
+ *   failures: Array<{ relativePath: string, stage: 'read' | 'parse' | 'eslint' | 'complexity', line: number, column: number, reason: string }>,
  *   findings: Array<Object>,
  *   summary: {
  *     discovered: number,
@@ -59,6 +60,8 @@ export async function mapConcurrent(items, concurrency, fn) {
  *     analyzed: number,
  *     failed: number,
  *     findings: number,
+ *     functionsAnalyzed: number,
+ *     findingsBySource: { eslint: number, complexity: number },
  *     severity: { critical: number, high: number, medium: number, low: number },
  *     ignored: number,
  *     tooLarge: number,
@@ -114,31 +117,62 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
         relativePath: file.relativePath
       });
 
-      let eslintResult;
+      const fileFindings = [];
+      let hadEslintFailure = false;
+      let eslintFailure = null;
+
       try {
-        eslintResult = await analyzeWithEslint({
+        const eslintResult = await analyzeWithEslint({
           source: fileParseResult.source,
           relativePath: file.relativePath
         });
+        fileFindings.push(...eslintResult.findings);
       } catch (error) {
-        return {
-          ok: false,
-          failure: {
-            relativePath: file.relativePath,
-            stage: 'eslint',
-            line: 1,
-            column: 1,
-            reason: error.message || 'ESLint analysis error'
-          },
-          astSummary
+        hadEslintFailure = true;
+        eslintFailure = {
+          relativePath: file.relativePath,
+          stage: 'eslint',
+          line: 1,
+          column: 1,
+          reason: error.message || 'ESLint analysis error'
         };
       }
 
+      let complexityResult = { functions: [], findings: [] };
+      let hadComplexityFailure = false;
+      let complexityFailure = null;
+
+      try {
+        complexityResult = analyzeComplexity({
+          ast: fileParseResult.ast,
+          relativePath: file.relativePath,
+          options: config.analyzers?.complexity
+        });
+        fileFindings.push(...complexityResult.findings);
+      } catch (error) {
+        hadComplexityFailure = true;
+        complexityFailure = {
+          relativePath: file.relativePath,
+          stage: 'complexity',
+          line: 1,
+          column: 1,
+          reason: error.message || 'Complexity analysis error'
+        };
+      }
+
+      const failures = [];
+      if (hadEslintFailure) failures.push(eslintFailure);
+      if (hadComplexityFailure) failures.push(complexityFailure);
+
       return {
-        ok: true,
+        ok: failures.length === 0,
         relativePath: file.relativePath,
         astSummary,
-        findings: eslintResult.findings
+        metrics: {
+          functions: complexityResult.functions
+        },
+        findings: fileFindings,
+        failures
       };
     }
   );
@@ -148,21 +182,34 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   const allRawFindings = [];
   let parsedCount = 0;
   let analyzedCount = 0;
+  let totalFunctionsAnalyzed = 0;
 
   for (const item of processedResults) {
-    if (item.ok) {
+    if (item.astSummary) {
       parsedCount++;
+    }
+
+    if (item.metrics) {
+      totalFunctionsAnalyzed += item.metrics.functions.length;
+    }
+
+    if (item.ok) {
       analyzedCount++;
       files.push({
         relativePath: item.relativePath,
         astSummary: item.astSummary,
+        metrics: item.metrics,
         findings: item.findings
       });
       allRawFindings.push(...item.findings);
     } else {
-      failures.push(item.failure);
-      if (item.astSummary) {
-        parsedCount++;
+      if (item.failures && item.failures.length > 0) {
+        failures.push(...item.failures);
+      } else if (item.failure) {
+        failures.push(item.failure);
+      }
+      if (item.findings && item.findings.length > 0) {
+        allRawFindings.push(...item.findings);
       }
     }
   }
@@ -172,12 +219,26 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   const sortedFindings = sortFindings(deduplicatedFindings);
   const severityCounts = countFindingsBySeverity(sortedFindings);
 
+  const findingsBySource = {
+    eslint: 0,
+    complexity: 0
+  };
+  for (const finding of sortedFindings) {
+    if (finding.source === 'eslint') {
+      findingsBySource.eslint++;
+    } else if (finding.source === 'complexity') {
+      findingsBySource.complexity++;
+    }
+  }
+
   const summary = {
     discovered: discoveryResult.files.length,
     parsed: parsedCount,
     analyzed: analyzedCount,
     failed: failures.length,
     findings: sortedFindings.length,
+    functionsAnalyzed: totalFunctionsAnalyzed,
+    findingsBySource,
     severity: severityCounts,
     ignored: discoveryResult.skipped.ignored,
     tooLarge: discoveryResult.skipped.tooLarge,

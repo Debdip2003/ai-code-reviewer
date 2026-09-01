@@ -43,7 +43,7 @@ describe('CLI Integration Tests', () => {
   });
 
   describe('init command', () => {
-    it('should create .aireviewerrc.json in current directory', () => {
+    it('should create .aireviewerrc.json in current directory with analyzers config', () => {
       const result = spawnSync(process.execPath, [cliPath, 'init'], {
         cwd: tempDir,
         encoding: 'utf-8'
@@ -93,6 +93,7 @@ describe('CLI Integration Tests', () => {
       const parsed = JSON.parse(raw);
       expect(parsed.concurrency).toBe(2);
       expect(parsed.include).toBeDefined();
+      expect(parsed.analyzers?.complexity).toBeDefined();
     });
   });
 
@@ -169,6 +170,29 @@ describe('CLI Integration Tests', () => {
       expect(combinedOutput).toContain('Review failed');
     });
 
+    it('should report complexity findings with suggestions in terminal mode', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'complex.js'),
+        `export function evaluate(a, b, c, d, e, f, g) {
+          if (a) return 1;
+          return 0;
+        }` // 7 parameters
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('complexity/too-many-parameters');
+      expect(result.stdout).toContain('Suggestion:');
+      expect(result.stdout).toContain('Functions analyzed: 1');
+      expect(result.stdout).toContain('Complexity findings: 1');
+    });
+
     it('should exit with 2 when a parser syntax failure occurs', async () => {
       await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
       await fs.writeFile(path.join(tempDir, 'src', 'broken.js'), 'const a = ;');
@@ -204,10 +228,40 @@ describe('CLI Integration Tests', () => {
       expect(parsed.findings[0].severity).toBe('high');
       expect(parsed.summary.discovered).toBe(1);
       expect(parsed.summary.analyzed).toBe(1);
-      expect(parsed.summary.severity.high).toBe(1);
+      expect(parsed.summary.functionsAnalyzed).toBe(1);
+      expect(parsed.summary.findingsBySource).toEqual({ eslint: 1, complexity: 0 });
 
       // Verify no ANSI escape codes in output
       expect(result.stdout).not.toMatch(/\x1B\[[0-9;]*m/);
+    });
+
+    it('should disable complexity analysis when configured with enabled: false', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'params.js'),
+        'export function test(a, b, c, d, e, f, g, h) { return a + b + c + d + e + f + g + h; }\n'
+      );
+      await fs.writeFile(
+        path.join(tempDir, CONFIG_FILE_NAME),
+        JSON.stringify({
+          analyzers: {
+            complexity: {
+              enabled: false
+            }
+          }
+        }, null, 2)
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.findings).toHaveLength(0);
+      expect(parsed.summary.findingsBySource.complexity).toBe(0);
     });
 
     it('should limit discovered files when --max-files is passed', async () => {

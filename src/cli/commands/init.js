@@ -27,7 +27,16 @@ export async function initAction(options = {}, rootDirectory = process.cwd()) {
     concurrency: DEFAULT_CONFIG.concurrency,
     severityThreshold: DEFAULT_CONFIG.severityThreshold,
     maxFiles: DEFAULT_CONFIG.maxFiles,
-    maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb
+    maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb,
+    analyzers: {
+      complexity: {
+        enabled: DEFAULT_CONFIG.analyzers.complexity.enabled,
+        maxFunctionLines: DEFAULT_CONFIG.analyzers.complexity.maxFunctionLines,
+        maxParameters: DEFAULT_CONFIG.analyzers.complexity.maxParameters,
+        maxCyclomaticComplexity: DEFAULT_CONFIG.analyzers.complexity.maxCyclomaticComplexity,
+        maxNestingDepth: DEFAULT_CONFIG.analyzers.complexity.maxNestingDepth
+      }
+    }
   };
 
   const fileContent = JSON.stringify(initialConfig, null, 2) + '\n';

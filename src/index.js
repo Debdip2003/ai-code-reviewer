@@ -15,8 +15,9 @@ export { parseJavaScript, JavaScriptParseError } from './parser/parse-javascript
 export { parseFile } from './parser/parse-file.js';
 export { summarizeAst } from './parser/summarize-ast.js';
 
-// Analyzer
+// Analyzers
 export { analyzeWithEslint, EslintAnalysisError } from './analyzers/eslint-analyzer.js';
+export { analyzeComplexity, ComplexityAnalysisError } from './analyzers/complexity-analyzer.js';
 
 // Review Model & Utilities
 export { FindingSchema, FindingSeverity, validateFinding } from './review/finding.js';

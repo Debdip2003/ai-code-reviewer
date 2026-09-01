@@ -77,7 +77,7 @@ export function printReviewTerminalReport({
   analyzedCount,
   failures = [],
   findings = [],
-  summary,
+  summary = {},
   threshold = 'medium',
   failedThreshold = false,
   skipped = { ignored: 0, tooLarge: 0, limited: 0 }
@@ -108,6 +108,11 @@ export function printReviewTerminalReport({
 
         console.log(`  ${tag} ${rule}  ${loc}`);
         console.log(`  ${finding.message}\n`);
+
+        if (finding.suggestion) {
+          console.log(`  ${chalk.dim('Suggestion:')}`);
+          console.log(`  ${chalk.italic(finding.suggestion)}\n`);
+        }
       }
     }
   }
@@ -128,6 +133,14 @@ export function printReviewTerminalReport({
   console.log(`Medium: ${sevCounts.medium || 0}`);
   console.log(`Low: ${sevCounts.low || 0}`);
   console.log(`Total: ${findings.length}\n`);
+
+  if (typeof summary.functionsAnalyzed === 'number') {
+    console.log(`Functions analyzed: ${summary.functionsAnalyzed}`);
+  }
+  if (summary.findingsBySource) {
+    console.log(`Complexity findings: ${summary.findingsBySource.complexity || 0}`);
+    console.log(`ESLint findings: ${summary.findingsBySource.eslint || 0}\n`);
+  }
 
   const skipItems = [];
   if (skipped.ignored > 0) skipItems.push(`${skipped.ignored} ignored`);

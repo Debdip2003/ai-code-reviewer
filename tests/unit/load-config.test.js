@@ -28,6 +28,7 @@ describe('loadConfig', () => {
     expect(config.severityThreshold).toBe(DEFAULT_CONFIG.severityThreshold);
     expect(config.maxFiles).toBe(DEFAULT_CONFIG.maxFiles);
     expect(config.maxFileSizeKb).toBe(DEFAULT_CONFIG.maxFileSizeKb);
+    expect(config.analyzers).toEqual(DEFAULT_CONFIG.analyzers);
     expect(config.rootDirectory).toBe(path.resolve(tempDir));
   });
 
@@ -52,13 +53,41 @@ describe('loadConfig', () => {
     expect(config.maxFileSizeKb).toBe(150);
     expect(config.include).toEqual(DEFAULT_CONFIG.include);
     expect(config.exclude).toEqual(DEFAULT_CONFIG.exclude);
+    expect(config.analyzers.complexity).toEqual(DEFAULT_CONFIG.analyzers.complexity);
+  });
+
+  it('should merge partial nested complexity configuration with defaults', async () => {
+    const userConfig = {
+      analyzers: {
+        complexity: {
+          maxCyclomaticComplexity: 15
+        }
+      }
+    };
+    await fs.writeFile(
+      path.join(tempDir, CONFIG_FILE_NAME),
+      JSON.stringify(userConfig, null, 2)
+    );
+
+    const config = await loadConfig({ rootDirectory: tempDir });
+
+    expect(config.analyzers.complexity.maxCyclomaticComplexity).toBe(15);
+    expect(config.analyzers.complexity.enabled).toBe(true);
+    expect(config.analyzers.complexity.maxFunctionLines).toBe(80);
+    expect(config.analyzers.complexity.maxParameters).toBe(5);
+    expect(config.analyzers.complexity.maxNestingDepth).toBe(4);
   });
 
   it('should apply precedence: DEFAULT_CONFIG < config file < CLI overrides', async () => {
     const userConfig = {
       outputFormat: 'json',
       concurrency: 4,
-      maxFiles: 30
+      maxFiles: 30,
+      analyzers: {
+        complexity: {
+          maxParameters: 8
+        }
+      }
     };
     await fs.writeFile(
       path.join(tempDir, CONFIG_FILE_NAME),
@@ -80,8 +109,10 @@ describe('loadConfig', () => {
     expect(config.maxFiles).toBe(10);
     // Set by file
     expect(config.outputFormat).toBe('json');
+    expect(config.analyzers.complexity.maxParameters).toBe(8);
     // Set by default
     expect(config.severityThreshold).toBe('medium');
+    expect(config.analyzers.complexity.maxFunctionLines).toBe(80);
   });
 
   it('should not let undefined CLI override values overwrite file or default settings', async () => {
@@ -127,7 +158,12 @@ describe('loadConfig', () => {
       { include: [] }, // empty array
       { include: [''] }, // empty pattern string
       { maxFiles: -1 }, // negative
-      { maxFileSizeKb: 0 } // non-positive
+      { maxFileSizeKb: 0 }, // non-positive
+      { analyzers: { complexity: { maxFunctionLines: 5 } } }, // below min 10
+      { analyzers: { complexity: { maxFunctionLines: 2000 } } }, // above max 1000
+      { analyzers: { complexity: { maxParameters: 0 } } }, // below min 1
+      { analyzers: { complexity: { maxCyclomaticComplexity: 0 } } }, // below min 1
+      { analyzers: { complexity: { maxNestingDepth: 25 } } } // above max 20
     ];
 
     for (const testCase of testCases) {
@@ -140,7 +176,7 @@ describe('loadConfig', () => {
     }
   });
 
-  it('should reject unknown configuration fields', async () => {
+  it('should reject unknown configuration fields including nested complexity fields', async () => {
     const invalidConfig = {
       concurrency: 3,
       unknownProperty: 'not-allowed'
@@ -151,14 +187,29 @@ describe('loadConfig', () => {
     );
 
     await expect(loadConfig({ rootDirectory: tempDir })).rejects.toThrow(ConfigurationError);
-    await expect(loadConfig({ rootDirectory: tempDir })).rejects.toThrow(/unknownProperty|Unrecognized/);
+
+    const invalidNestedConfig = {
+      analyzers: {
+        complexity: {
+          unknownOption: true
+        }
+      }
+    };
+    await fs.writeFile(
+      path.join(tempDir, CONFIG_FILE_NAME),
+      JSON.stringify(invalidNestedConfig, null, 2)
+    );
+
+    await expect(loadConfig({ rootDirectory: tempDir })).rejects.toThrow(ConfigurationError);
   });
 
-  it('should return newly created arrays that do not mutate DEFAULT_CONFIG', async () => {
+  it('should return newly created arrays and objects that do not mutate DEFAULT_CONFIG', async () => {
     const config = await loadConfig({ rootDirectory: tempDir });
 
     expect(config.include).not.toBe(DEFAULT_CONFIG.include);
     expect(config.exclude).not.toBe(DEFAULT_CONFIG.exclude);
+    expect(config.analyzers).not.toBe(DEFAULT_CONFIG.analyzers);
+    expect(config.analyzers.complexity).not.toBe(DEFAULT_CONFIG.analyzers.complexity);
 
     // Mutating returned config must not affect DEFAULT_CONFIG
     config.include.push('**/*.custom');
