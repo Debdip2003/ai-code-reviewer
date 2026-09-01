@@ -134,12 +134,23 @@ export function printReviewTerminalReport({
   console.log(`Low: ${sevCounts.low || 0}`);
   console.log(`Total: ${findings.length}\n`);
 
+  if (summary.findingsBySource) {
+    console.log(`ESLint findings: ${summary.findingsBySource.eslint || 0}`);
+    console.log(`Complexity findings: ${summary.findingsBySource.complexity || 0}`);
+    console.log(`React findings: ${summary.findingsBySource.react || 0}\n`);
+  }
+
   if (typeof summary.functionsAnalyzed === 'number') {
     console.log(`Functions analyzed: ${summary.functionsAnalyzed}`);
   }
-  if (summary.findingsBySource) {
-    console.log(`Complexity findings: ${summary.findingsBySource.complexity || 0}`);
-    console.log(`ESLint findings: ${summary.findingsBySource.eslint || 0}\n`);
+  if (typeof summary.componentsAnalyzed === 'number') {
+    console.log(`Components analyzed: ${summary.componentsAnalyzed}`);
+  }
+  if (typeof summary.effectsAnalyzed === 'number') {
+    console.log(`Effects analyzed: ${summary.effectsAnalyzed}`);
+  }
+  if (typeof summary.stateVariablesTracked === 'number') {
+    console.log(`State variables tracked: ${summary.stateVariablesTracked}\n`);
   }
 
   const skipItems = [];

@@ -35,6 +35,14 @@ export async function initAction(options = {}, rootDirectory = process.cwd()) {
         maxParameters: DEFAULT_CONFIG.analyzers.complexity.maxParameters,
         maxCyclomaticComplexity: DEFAULT_CONFIG.analyzers.complexity.maxCyclomaticComplexity,
         maxNestingDepth: DEFAULT_CONFIG.analyzers.complexity.maxNestingDepth
+      },
+      react: {
+        enabled: DEFAULT_CONFIG.analyzers.react.enabled,
+        hooks: DEFAULT_CONFIG.analyzers.react.hooks,
+        maxComponentLines: DEFAULT_CONFIG.analyzers.react.maxComponentLines,
+        maxEffectLines: DEFAULT_CONFIG.analyzers.react.maxEffectLines,
+        detectDirectStateMutation: DEFAULT_CONFIG.analyzers.react.detectDirectStateMutation,
+        detectArrayIndexKeys: DEFAULT_CONFIG.analyzers.react.detectArrayIndexKeys
       }
     }
   };

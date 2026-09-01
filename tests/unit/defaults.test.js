@@ -36,6 +36,14 @@ describe('DEFAULT_CONFIG and Constants', () => {
           maxParameters: 5,
           maxCyclomaticComplexity: 10,
           maxNestingDepth: 4
+        },
+        react: {
+          enabled: true,
+          hooks: true,
+          maxComponentLines: 200,
+          maxEffectLines: 50,
+          detectDirectStateMutation: true,
+          detectArrayIndexKeys: true
         }
       }
     });
@@ -47,6 +55,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(Object.isFrozen(DEFAULT_CONFIG.exclude)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.complexity)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.react)).toBe(true);
 
     expect(() => {
       // @ts-expect-error - testing immutability
@@ -55,7 +64,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
 
     expect(() => {
       // @ts-expect-error - testing immutability
-      DEFAULT_CONFIG.analyzers.complexity.enabled = false;
+      DEFAULT_CONFIG.analyzers.react.enabled = false;
     }).toThrow();
   });
 });

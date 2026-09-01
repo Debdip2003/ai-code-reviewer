@@ -1,10 +1,10 @@
 # ai-code-reviewer
 
-A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using deterministic static analysis, code complexity analysis, and AI.
+A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using deterministic static analysis, code complexity analysis, React-specific inspections, and AI.
 
 ## Project Purpose
 
-`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, and AST-based complexity analysis with targeted insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
 
 ## Review Pipeline
 
@@ -12,8 +12,9 @@ A production-quality, terminal-first npm package for reviewing JavaScript and Re
 Configuration
 → File discovery
 → Babel parsing
-→ ESLint static analysis
+→ ESLint and React Hooks rules
 → Complexity analysis
+→ Custom React AST analysis
 → Finding normalization
 → Deduplication & severity filtering
 → Terminal or JSON report
@@ -22,6 +23,8 @@ Configuration
 ## Current Capabilities
 
 * **Deterministic Static Analysis Active:** Evaluates JavaScript and React JSX files using internal ESLint rules focused on bug prevention.
+* **React Hooks Rules Active:** Enforces official React Hooks rules (`react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`) via isolated flat configuration.
+* **Custom React AST Analysis Active:** Detects oversized components, direct state mutations, async `useEffect` callbacks, oversized effect callbacks, and array-index keys.
 * **AST Complexity Analysis Active:** Evaluates function line length, parameter count, cyclomatic complexity, and control-flow decision nesting depth using AST inspection.
 * **Isolated Configuration:** Operates with a controlled internal flat configuration; the target repository's `.eslintrc` or `eslint.config.js` is **never loaded**.
 * **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** source files.
@@ -93,28 +96,27 @@ ai-code-reviewer review ./src --max-files 25
 
 ## Analyzers & Rules
 
-### 1. ESLint Static Analyzer
+### 1. ESLint Static & React Hook Rules
 
-Inspects 28 core bug-prevention rules including `no-undef`, `no-unreachable`, `no-dupe-keys`, `use-isnan`, `valid-typeof`, `no-fallthrough`, `eqeqeq`, and `no-unused-vars`.
+* **Core JavaScript Rules**: Inspects 28 bug-prevention rules including `no-undef`, `no-unreachable`, `no-dupe-keys`, `use-isnan`, `valid-typeof`, `no-fallthrough`, `eqeqeq`, and `no-unused-vars`.
+* **Official React Hook Rules**:
+  * `react-hooks/rules-of-hooks` (`high`): Enforces Hook call rules (only call Hooks at the top level of React function components or custom Hooks).
+  * `react-hooks/exhaustive-deps` (`medium`): Verifies effect dependency arrays for completeness.
 
-### 2. AST Complexity Analyzer
+### 2. Custom React AST Analyzer
 
-Measures structural maintainability metrics for every function, method, and callback:
+* **Large Component (`react/component-too-large`)**: Flags function or class components exceeding `maxComponentLines` (default 200).
+* **Direct State Mutation (`react/direct-state-mutation`)**: Flags mutating array methods (`push`, `pop`, `splice`, etc.), property assignments (`items[0] = x`), or update expressions (`count++`) directly on `useState` variables.
+* **Async Effect Callback (`react/async-effect-callback`)**: Flags `useEffect(async () => ...)` because async callbacks return a Promise instead of an effect cleanup function.
+* **Large Effect Callback (`react/effect-too-large`)**: Flags inline effect callbacks exceeding `maxEffectLines` (default 50).
+* **Array-Index Key (`react/array-index-key`)**: Flags direct usage of map index parameters as React `key` props (`.map((item, index) => <Comp key={index} />)`).
+
+### 3. AST Complexity Analyzer
 
 * **Function Length (`complexity/function-too-long`)**: Total physical lines spanning the function (`endLine - startLine + 1`).
 * **Parameter Count (`complexity/too-many-parameters`)**: Top-level formal parameters, including destructuring and rest parameters.
 * **Cyclomatic Complexity (`complexity/high-cyclomatic-complexity`)**: Decision points (`if`, `? :`, loops, `catch`, `switch` cases, `&&`, `||`, `??`).
 * **Decision Nesting Depth (`complexity/deep-nesting`)**: Maximum control-flow nesting depth (`if`, loops, `switch`, `try`/`catch`).
-
-> [!NOTE]
-> Complexity metrics are maintainability and readability signals, not proof that code is incorrect. Adjust threshold values gradually to fit your team's architecture.
-
-### Severity Rules for Complexity Findings
-
-* **`complexity/function-too-long`**: `medium` when exceeding threshold, `high` when at least 2× threshold.
-* **`complexity/too-many-parameters`**: `low` when 1 above threshold, `medium` when > 1 above threshold, `high` when at least 2× threshold.
-* **`complexity/high-cyclomatic-complexity`**: `medium` when exceeding threshold, `high` when at least 2× threshold.
-* **`complexity/deep-nesting`**: `medium` when exceeding threshold, `high` when at least 2× threshold.
 
 ## Configuration
 
@@ -150,20 +152,38 @@ Measures structural maintainability metrics for every function, method, and call
       "maxParameters": 5,
       "maxCyclomaticComplexity": 10,
       "maxNestingDepth": 4
+    },
+    "react": {
+      "enabled": true,
+      "hooks": true,
+      "maxComponentLines": 200,
+      "maxEffectLines": 50,
+      "detectDirectStateMutation": true,
+      "detectArrayIndexKeys": true
     }
   }
 }
 ```
 
-### Disabling Complexity Analysis
-
-To disable complexity analysis while keeping ESLint static analysis active:
+### Disabling React Analysis or Hook Rules
 
 ```json
 {
   "analyzers": {
-    "complexity": {
+    "react": {
       "enabled": false
+    }
+  }
+}
+```
+
+To disable only official React Hook ESLint rules while keeping custom React AST rules:
+
+```json
+{
+  "analyzers": {
+    "react": {
+      "hooks": false
     }
   }
 }
@@ -177,18 +197,18 @@ To disable complexity analysis while keeping ESLint static analysis active:
   "rootDirectory": "/path/to/project",
   "findings": [
     {
-      "source": "complexity",
-      "ruleId": "complexity/high-cyclomatic-complexity",
-      "severity": "medium",
-      "category": "maintainability",
-      "title": "High cyclomatic complexity",
-      "message": "Function 'processOrder' has cyclomatic complexity 14, exceeding the configured maximum of 10.",
-      "relativePath": "src/orders.js",
-      "lineStart": 20,
-      "columnStart": 1,
-      "lineEnd": 75,
-      "columnEnd": 2,
-      "suggestion": "Break the decision logic into smaller focused functions or dispatch tables.",
+      "source": "react",
+      "ruleId": "react/direct-state-mutation",
+      "severity": "high",
+      "category": "correctness",
+      "title": "Direct React state mutation",
+      "message": "React state 'items' is mutated directly through 'push'.",
+      "relativePath": "src/ProductList.jsx",
+      "lineStart": 18,
+      "columnStart": 5,
+      "lineEnd": 18,
+      "columnEnd": 22,
+      "suggestion": "Create a new value and pass it to the state setter instead of mutating React state directly.",
       "fixable": false
     }
   ],
@@ -199,15 +219,19 @@ To disable complexity analysis while keeping ESLint static analysis active:
     "analyzed": 1,
     "failed": 0,
     "findings": 1,
-    "functionsAnalyzed": 4,
+    "functionsAnalyzed": 2,
+    "componentsAnalyzed": 1,
+    "effectsAnalyzed": 1,
+    "stateVariablesTracked": 1,
     "findingsBySource": {
       "eslint": 0,
-      "complexity": 1
+      "complexity": 0,
+      "react": 1
     },
     "severity": {
       "critical": 0,
-      "high": 0,
-      "medium": 1,
+      "high": 1,
+      "medium": 0,
       "low": 0
     },
     "ignored": 0,
@@ -226,6 +250,7 @@ import {
   parseJavaScript,
   analyzeWithEslint,
   analyzeComplexity,
+  analyzeReact,
   reviewRepository
 } from 'ai-code-reviewer';
 

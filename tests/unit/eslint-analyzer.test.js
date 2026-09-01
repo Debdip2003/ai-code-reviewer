@@ -184,6 +184,74 @@ describe('analyzeWithEslint', () => {
     expect(result.findings).toHaveLength(0);
   });
 
+  it('should detect conditional Hook calls (react-hooks/rules-of-hooks)', async () => {
+    const source = `
+      import { useState } from 'react';
+      export function MyComponent({ condition }) {
+        if (condition) {
+          const [val, setVal] = useState(0);
+          return val;
+        }
+        return null;
+      }
+    `;
+    const result = await analyzeWithEslint({
+      source,
+      relativePath: 'src/ConditionalHook.jsx'
+    });
+
+    expect(result.findings.some((f) => f.ruleId === 'react-hooks/rules-of-hooks')).toBe(true);
+    const hookFinding = result.findings.find((f) => f.ruleId === 'react-hooks/rules-of-hooks');
+    expect(hookFinding.severity).toBe('high');
+    expect(hookFinding.category).toBe('correctness');
+  });
+
+  it('should detect missing effect dependencies (react-hooks/exhaustive-deps)', async () => {
+    const source = `
+      import { useEffect, useState } from 'react';
+      export function Profile({ userId }) {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          console.log(userId);
+        }, []); // missing userId
+        return user;
+      }
+    `;
+    const result = await analyzeWithEslint({
+      source,
+      relativePath: 'src/Profile.jsx'
+    });
+
+    expect(result.findings.some((f) => f.ruleId === 'react-hooks/exhaustive-deps')).toBe(true);
+    const depFinding = result.findings.find((f) => f.ruleId === 'react-hooks/exhaustive-deps');
+    expect(depFinding.severity).toBe('medium');
+    expect(depFinding.category).toBe('correctness');
+  });
+
+  it('should not report Hook violations when react-hooks rules are disabled in config', async () => {
+    const source = `
+      import { useState } from 'react';
+      export function MyComponent({ condition }) {
+        if (condition) {
+          const [val] = useState(0);
+          return val;
+        }
+        return null;
+      }
+    `;
+    const result = await analyzeWithEslint({
+      source,
+      relativePath: 'src/ConditionalHook.jsx',
+      options: {
+        react: {
+          hooks: false
+        }
+      }
+    });
+
+    expect(result.findings.some((f) => f.ruleId === 'react-hooks/rules-of-hooks')).toBe(false);
+  });
+
   it('should recognize browser and Node.js globals without false positives', async () => {
     const source = `
       export function logEnv() {

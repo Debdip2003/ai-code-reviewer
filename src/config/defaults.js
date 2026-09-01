@@ -13,8 +13,19 @@
  */
 
 /**
+ * @typedef {Object} ReactConfig
+ * @property {boolean} enabled - Whether React-specific analysis is active.
+ * @property {boolean} hooks - Whether official React Hook rules are active.
+ * @property {number} maxComponentLines - Maximum allowable line count for a React component.
+ * @property {number} maxEffectLines - Maximum allowable line count for an effect callback.
+ * @property {boolean} detectDirectStateMutation - Whether to detect direct React state mutations.
+ * @property {boolean} detectArrayIndexKeys - Whether to detect array index used as React keys.
+ */
+
+/**
  * @typedef {Object} AnalyzersConfig
  * @property {ComplexityConfig} complexity - Complexity analyzer settings.
+ * @property {ReactConfig} react - React analyzer settings.
  */
 
 /**
@@ -62,6 +73,14 @@ export const DEFAULT_CONFIG = Object.freeze({
       maxParameters: 5,
       maxCyclomaticComplexity: 10,
       maxNestingDepth: 4
+    }),
+    react: Object.freeze({
+      enabled: true,
+      hooks: true,
+      maxComponentLines: 200,
+      maxEffectLines: 50,
+      detectDirectStateMutation: true,
+      detectArrayIndexKeys: true
     })
   })
 });

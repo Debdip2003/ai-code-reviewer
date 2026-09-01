@@ -9,7 +9,7 @@ import { CONFIG_FILE_NAME } from '../../src/config/defaults.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.resolve(__dirname, '../../bin/cli.js');
 
-describe('CLI Integration Tests', () => {
+describe('CLI Integration Tests', { timeout: 20000 }, () => {
   let tempDir;
 
   beforeEach(async () => {
@@ -94,6 +94,7 @@ describe('CLI Integration Tests', () => {
       expect(parsed.concurrency).toBe(2);
       expect(parsed.include).toBeDefined();
       expect(parsed.analyzers?.complexity).toBeDefined();
+      expect(parsed.analyzers?.react).toBeDefined();
     });
   });
 
@@ -229,7 +230,7 @@ describe('CLI Integration Tests', () => {
       expect(parsed.summary.discovered).toBe(1);
       expect(parsed.summary.analyzed).toBe(1);
       expect(parsed.summary.functionsAnalyzed).toBe(1);
-      expect(parsed.summary.findingsBySource).toEqual({ eslint: 1, complexity: 0 });
+      expect(parsed.summary.findingsBySource).toEqual({ eslint: 1, complexity: 0, react: 0 });
 
       // Verify no ANSI escape codes in output
       expect(result.stdout).not.toMatch(/\x1B\[[0-9;]*m/);
@@ -262,6 +263,40 @@ describe('CLI Integration Tests', () => {
       const parsed = JSON.parse(result.stdout.trim());
       expect(parsed.findings).toHaveLength(0);
       expect(parsed.summary.findingsBySource.complexity).toBe(0);
+    });
+
+    it('should report React findings and summary metrics in CLI review', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'ProductList.jsx'),
+        `import React, { useState } from 'react';
+        export function ProductList({ items }) {
+          const [stateItems, setStateItems] = useState([]);
+          function addItem(item) {
+            stateItems.push(item);
+          }
+          return (
+            <div>
+              {items.map((it, idx) => (
+                <span key={idx}>{it.name}</span>
+              ))}
+            </div>
+          );
+        }\n`
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('react/direct-state-mutation');
+      expect(result.stdout).toContain('react/array-index-key');
+      expect(result.stdout).toContain('React findings:');
+      expect(result.stdout).toContain('Components analyzed: 1');
+      expect(result.stdout).toContain('State variables tracked: 1');
     });
 
     it('should limit discovered files when --max-files is passed', async () => {

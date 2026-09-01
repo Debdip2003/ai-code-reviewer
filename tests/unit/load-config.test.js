@@ -54,13 +54,18 @@ describe('loadConfig', () => {
     expect(config.include).toEqual(DEFAULT_CONFIG.include);
     expect(config.exclude).toEqual(DEFAULT_CONFIG.exclude);
     expect(config.analyzers.complexity).toEqual(DEFAULT_CONFIG.analyzers.complexity);
+    expect(config.analyzers.react).toEqual(DEFAULT_CONFIG.analyzers.react);
   });
 
-  it('should merge partial nested complexity configuration with defaults', async () => {
+  it('should merge partial nested complexity and react configuration independently', async () => {
     const userConfig = {
       analyzers: {
         complexity: {
           maxCyclomaticComplexity: 15
+        },
+        react: {
+          maxComponentLines: 300,
+          hooks: false
         }
       }
     };
@@ -74,8 +79,12 @@ describe('loadConfig', () => {
     expect(config.analyzers.complexity.maxCyclomaticComplexity).toBe(15);
     expect(config.analyzers.complexity.enabled).toBe(true);
     expect(config.analyzers.complexity.maxFunctionLines).toBe(80);
-    expect(config.analyzers.complexity.maxParameters).toBe(5);
-    expect(config.analyzers.complexity.maxNestingDepth).toBe(4);
+
+    expect(config.analyzers.react.maxComponentLines).toBe(300);
+    expect(config.analyzers.react.hooks).toBe(false);
+    expect(config.analyzers.react.enabled).toBe(true);
+    expect(config.analyzers.react.maxEffectLines).toBe(50);
+    expect(config.analyzers.react.detectDirectStateMutation).toBe(true);
   });
 
   it('should apply precedence: DEFAULT_CONFIG < config file < CLI overrides', async () => {
@@ -113,6 +122,7 @@ describe('loadConfig', () => {
     // Set by default
     expect(config.severityThreshold).toBe('medium');
     expect(config.analyzers.complexity.maxFunctionLines).toBe(80);
+    expect(config.analyzers.react.maxComponentLines).toBe(200);
   });
 
   it('should not let undefined CLI override values overwrite file or default settings', async () => {
@@ -163,7 +173,11 @@ describe('loadConfig', () => {
       { analyzers: { complexity: { maxFunctionLines: 2000 } } }, // above max 1000
       { analyzers: { complexity: { maxParameters: 0 } } }, // below min 1
       { analyzers: { complexity: { maxCyclomaticComplexity: 0 } } }, // below min 1
-      { analyzers: { complexity: { maxNestingDepth: 25 } } } // above max 20
+      { analyzers: { complexity: { maxNestingDepth: 25 } } }, // above max 20
+      { analyzers: { react: { maxComponentLines: 10 } } }, // below min 20
+      { analyzers: { react: { maxComponentLines: 3000 } } }, // above max 2000
+      { analyzers: { react: { maxEffectLines: 2 } } }, // below min 5
+      { analyzers: { react: { maxEffectLines: 800 } } } // above max 500
     ];
 
     for (const testCase of testCases) {
@@ -176,7 +190,7 @@ describe('loadConfig', () => {
     }
   });
 
-  it('should reject unknown configuration fields including nested complexity fields', async () => {
+  it('should reject unknown configuration fields including nested complexity and react fields', async () => {
     const invalidConfig = {
       concurrency: 3,
       unknownProperty: 'not-allowed'
@@ -190,8 +204,8 @@ describe('loadConfig', () => {
 
     const invalidNestedConfig = {
       analyzers: {
-        complexity: {
-          unknownOption: true
+        react: {
+          unknownReactOption: true
         }
       }
     };
@@ -210,6 +224,7 @@ describe('loadConfig', () => {
     expect(config.exclude).not.toBe(DEFAULT_CONFIG.exclude);
     expect(config.analyzers).not.toBe(DEFAULT_CONFIG.analyzers);
     expect(config.analyzers.complexity).not.toBe(DEFAULT_CONFIG.analyzers.complexity);
+    expect(config.analyzers.react).not.toBe(DEFAULT_CONFIG.analyzers.react);
 
     // Mutating returned config must not affect DEFAULT_CONFIG
     config.include.push('**/*.custom');

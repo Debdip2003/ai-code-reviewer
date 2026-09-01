@@ -60,11 +60,36 @@ export const complexityConfigSchema = z
   .strict();
 
 /**
+ * Zod schema for React analyzer configuration.
+ */
+export const reactConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    hooks: z.boolean().optional(),
+    maxComponentLines: z
+      .number()
+      .int('maxComponentLines must be an integer')
+      .min(20, 'maxComponentLines must be at least 20')
+      .max(2000, 'maxComponentLines cannot exceed 2000')
+      .optional(),
+    maxEffectLines: z
+      .number()
+      .int('maxEffectLines must be an integer')
+      .min(5, 'maxEffectLines must be at least 5')
+      .max(500, 'maxEffectLines cannot exceed 500')
+      .optional(),
+    detectDirectStateMutation: z.boolean().optional(),
+    detectArrayIndexKeys: z.boolean().optional()
+  })
+  .strict();
+
+/**
  * Zod schema for analyzers configuration group.
  */
 export const analyzersConfigSchema = z
   .object({
-    complexity: complexityConfigSchema.optional()
+    complexity: complexityConfigSchema.optional(),
+    react: reactConfigSchema.optional()
   })
   .strict();
 
@@ -230,6 +255,21 @@ export async function loadConfig(options = {}) {
       cliComplexity.maxNestingDepth ?? fileComplexity.maxNestingDepth ?? defaultComplexity.maxNestingDepth
   };
 
+  const defaultReact = DEFAULT_CONFIG.analyzers.react;
+  const fileReact = fileConfig.analyzers?.react || {};
+  const cliReact = cleanCliOverrides.analyzers?.react || {};
+
+  const mergedReact = {
+    enabled: cliReact.enabled ?? fileReact.enabled ?? defaultReact.enabled,
+    hooks: cliReact.hooks ?? fileReact.hooks ?? defaultReact.hooks,
+    maxComponentLines: cliReact.maxComponentLines ?? fileReact.maxComponentLines ?? defaultReact.maxComponentLines,
+    maxEffectLines: cliReact.maxEffectLines ?? fileReact.maxEffectLines ?? defaultReact.maxEffectLines,
+    detectDirectStateMutation:
+      cliReact.detectDirectStateMutation ?? fileReact.detectDirectStateMutation ?? defaultReact.detectDirectStateMutation,
+    detectArrayIndexKeys:
+      cliReact.detectArrayIndexKeys ?? fileReact.detectArrayIndexKeys ?? defaultReact.detectArrayIndexKeys
+  };
+
   return {
     include: [...mergedInclude],
     exclude: [...mergedExclude],
@@ -239,7 +279,8 @@ export async function loadConfig(options = {}) {
     maxFiles: cleanCliOverrides.maxFiles ?? fileConfig.maxFiles ?? DEFAULT_CONFIG.maxFiles,
     maxFileSizeKb: cleanCliOverrides.maxFileSizeKb ?? fileConfig.maxFileSizeKb ?? DEFAULT_CONFIG.maxFileSizeKb,
     analyzers: {
-      complexity: mergedComplexity
+      complexity: mergedComplexity,
+      react: mergedReact
     },
     rootDirectory
   };

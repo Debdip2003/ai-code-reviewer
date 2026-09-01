@@ -1,7 +1,7 @@
 /**
  * Core review engine orchestrator.
  * Coordinates repository file discovery, Babel AST parsing, ESLint static analysis,
- * custom AST complexity analysis, finding deduplication, and severity tallying.
+ * custom AST complexity analysis, custom React analysis, finding deduplication, and severity tallying.
  */
 
 import { discoverFiles } from '../scanner/discover-files.js';
@@ -9,6 +9,7 @@ import { parseFile } from '../parser/parse-file.js';
 import { summarizeAst } from '../parser/summarize-ast.js';
 import { analyzeWithEslint } from '../analyzers/eslint-analyzer.js';
 import { analyzeComplexity } from '../analyzers/complexity-analyzer.js';
+import { analyzeReact } from '../analyzers/react-analyzer.js';
 import { deduplicateFindings } from './deduplicate.js';
 import { sortFindings, countFindingsBySeverity } from './severity.js';
 
@@ -51,8 +52,8 @@ export async function mapConcurrent(items, concurrency, fn) {
  * @param {import('../config/defaults.js').ReviewerConfig & { rootDirectory?: string }} [options.config] - Resolved reviewer configuration.
  * @returns {Promise<{
  *   rootDirectory: string,
- *   files: Array<{ relativePath: string, astSummary: Object, metrics: { functions: Array<Object> }, findings: Array<Object> }>,
- *   failures: Array<{ relativePath: string, stage: 'read' | 'parse' | 'eslint' | 'complexity', line: number, column: number, reason: string }>,
+ *   files: Array<{ relativePath: string, astSummary: Object, metrics: { functions: Array<Object>, react: Object }, findings: Array<Object> }>,
+ *   failures: Array<{ relativePath: string, stage: 'read' | 'parse' | 'eslint' | 'complexity' | 'react', line: number, column: number, reason: string }>,
  *   findings: Array<Object>,
  *   summary: {
  *     discovered: number,
@@ -61,7 +62,10 @@ export async function mapConcurrent(items, concurrency, fn) {
  *     failed: number,
  *     findings: number,
  *     functionsAnalyzed: number,
- *     findingsBySource: { eslint: number, complexity: number },
+ *     componentsAnalyzed: number,
+ *     effectsAnalyzed: number,
+ *     stateVariablesTracked: number,
+ *     findingsBySource: { eslint: number, complexity: number, react: number },
  *     severity: { critical: number, high: number, medium: number, low: number },
  *     ignored: number,
  *     tooLarge: number,
@@ -124,7 +128,8 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
       try {
         const eslintResult = await analyzeWithEslint({
           source: fileParseResult.source,
-          relativePath: file.relativePath
+          relativePath: file.relativePath,
+          options: { react: config.analyzers?.react }
         });
         fileFindings.push(...eslintResult.findings);
       } catch (error) {
@@ -160,16 +165,45 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
         };
       }
 
+      let reactResult = { isReactFile: false, components: [], effects: [], stateVariables: [], findings: [] };
+      let hadReactFailure = false;
+      let reactFailure = null;
+
+      try {
+        reactResult = analyzeReact({
+          ast: fileParseResult.ast,
+          relativePath: file.relativePath,
+          options: config.analyzers?.react
+        });
+        fileFindings.push(...reactResult.findings);
+      } catch (error) {
+        hadReactFailure = true;
+        reactFailure = {
+          relativePath: file.relativePath,
+          stage: 'react',
+          line: 1,
+          column: 1,
+          reason: error.message || 'React analysis error'
+        };
+      }
+
       const failures = [];
       if (hadEslintFailure) failures.push(eslintFailure);
       if (hadComplexityFailure) failures.push(complexityFailure);
+      if (hadReactFailure) failures.push(reactFailure);
 
       return {
         ok: failures.length === 0,
         relativePath: file.relativePath,
         astSummary,
         metrics: {
-          functions: complexityResult.functions
+          functions: complexityResult.functions,
+          react: {
+            isReactFile: reactResult.isReactFile,
+            components: reactResult.components,
+            effects: reactResult.effects,
+            stateVariables: reactResult.stateVariables
+          }
         },
         findings: fileFindings,
         failures
@@ -183,6 +217,9 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   let parsedCount = 0;
   let analyzedCount = 0;
   let totalFunctionsAnalyzed = 0;
+  let totalComponentsAnalyzed = 0;
+  let totalEffectsAnalyzed = 0;
+  let totalStateVariablesTracked = 0;
 
   for (const item of processedResults) {
     if (item.astSummary) {
@@ -190,7 +227,20 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
     }
 
     if (item.metrics) {
-      totalFunctionsAnalyzed += item.metrics.functions.length;
+      if (Array.isArray(item.metrics.functions)) {
+        totalFunctionsAnalyzed += item.metrics.functions.length;
+      }
+      if (item.metrics.react) {
+        if (Array.isArray(item.metrics.react.components)) {
+          totalComponentsAnalyzed += item.metrics.react.components.length;
+        }
+        if (Array.isArray(item.metrics.react.effects)) {
+          totalEffectsAnalyzed += item.metrics.react.effects.length;
+        }
+        if (Array.isArray(item.metrics.react.stateVariables)) {
+          totalStateVariablesTracked += item.metrics.react.stateVariables.length;
+        }
+      }
     }
 
     if (item.ok) {
@@ -221,13 +271,16 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
 
   const findingsBySource = {
     eslint: 0,
-    complexity: 0
+    complexity: 0,
+    react: 0
   };
   for (const finding of sortedFindings) {
     if (finding.source === 'eslint') {
       findingsBySource.eslint++;
     } else if (finding.source === 'complexity') {
       findingsBySource.complexity++;
+    } else if (finding.source === 'react') {
+      findingsBySource.react++;
     }
   }
 
@@ -238,6 +291,9 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
     failed: failures.length,
     findings: sortedFindings.length,
     functionsAnalyzed: totalFunctionsAnalyzed,
+    componentsAnalyzed: totalComponentsAnalyzed,
+    effectsAnalyzed: totalEffectsAnalyzed,
+    stateVariablesTracked: totalStateVariablesTracked,
     findingsBySource,
     severity: severityCounts,
     ignored: discoveryResult.skipped.ignored,

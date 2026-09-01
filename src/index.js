@@ -18,6 +18,7 @@ export { summarizeAst } from './parser/summarize-ast.js';
 // Analyzers
 export { analyzeWithEslint, EslintAnalysisError } from './analyzers/eslint-analyzer.js';
 export { analyzeComplexity, ComplexityAnalysisError } from './analyzers/complexity-analyzer.js';
+export { analyzeReact, ReactAnalysisError } from './analyzers/react-analyzer.js';
 
 // Review Model & Utilities
 export { FindingSchema, FindingSeverity, validateFinding } from './review/finding.js';

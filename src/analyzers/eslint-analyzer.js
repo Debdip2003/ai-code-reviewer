@@ -6,6 +6,7 @@
 
 import { ESLint } from 'eslint';
 import globals from 'globals';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import { validateFinding } from '../review/finding.js';
 import { sortFindings } from '../review/severity.js';
 
@@ -167,16 +168,29 @@ export const RULE_METADATA = Object.freeze({
     severity: 'high',
     category: 'correctness',
     title: 'Return in constructor'
+  },
+  'react-hooks/rules-of-hooks': {
+    severity: 'high',
+    category: 'correctness',
+    title: 'Invalid React Hook usage'
+  },
+  'react-hooks/exhaustive-deps': {
+    severity: 'medium',
+    category: 'correctness',
+    title: 'Incomplete React Hook dependencies'
   }
 });
 
 /**
- * Builds the rules map for ESLint configuration from RULE_METADATA.
- * @returns {Record<string, 'error'>}
+ * Builds the base rules map for ESLint configuration from RULE_METADATA.
+ * @returns {Record<string, 'error' | ['error', unknown]>}
  */
 function buildEslintRulesConfig() {
   const rules = {};
   for (const ruleId of Object.keys(RULE_METADATA)) {
+    if (ruleId.startsWith('react-hooks/')) {
+      continue;
+    }
     if (ruleId === 'eqeqeq') {
       rules[ruleId] = ['error', 'always'];
     } else if (ruleId === 'no-unused-vars') {
@@ -188,40 +202,75 @@ function buildEslintRulesConfig() {
   return rules;
 }
 
-let cachedEslintInstance = null;
+/**
+ * Builds the flat configuration object for ESLint.
+ * @param {boolean} enableHooks
+ * @returns {Object}
+ */
+function buildEslintConfig(enableHooks = true) {
+  const rules = buildEslintRulesConfig();
+
+  if (enableHooks) {
+    rules['react-hooks/rules-of-hooks'] = 'error';
+    rules['react-hooks/exhaustive-deps'] = 'warn';
+  }
+
+  const config = {
+    files: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true
+        }
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.builtin
+      }
+    },
+    rules
+  };
+
+  if (enableHooks) {
+    config.plugins = {
+      'react-hooks': reactHooksPlugin
+    };
+  }
+
+  return config;
+}
+
+let cachedEslintWithHooks = null;
+let cachedEslintWithoutHooks = null;
 
 /**
- * Returns a singleton programmatic ESLint instance configured with internal deterministic rules.
+ * Returns a programmatic ESLint instance configured with internal deterministic rules.
+ * @param {boolean} [enableHooks=true]
  * @returns {ESLint}
  */
-function getEslintInstance() {
-  if (!cachedEslintInstance) {
-    cachedEslintInstance = new ESLint({
+function getEslintInstance(enableHooks = true) {
+  if (enableHooks) {
+    if (!cachedEslintWithHooks) {
+      cachedEslintWithHooks = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: [buildEslintConfig(true)],
+        fix: false
+      });
+    }
+    return cachedEslintWithHooks;
+  }
+
+  if (!cachedEslintWithoutHooks) {
+    cachedEslintWithoutHooks = new ESLint({
       overrideConfigFile: true,
-      overrideConfig: [
-        {
-          files: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
-          languageOptions: {
-            ecmaVersion: 'latest',
-            sourceType: 'module',
-            parserOptions: {
-              ecmaFeatures: {
-                jsx: true
-              }
-            },
-            globals: {
-              ...globals.browser,
-              ...globals.node,
-              ...globals.builtin
-            }
-          },
-          rules: buildEslintRulesConfig()
-        }
-      ],
+      overrideConfig: [buildEslintConfig(false)],
       fix: false
     });
   }
-  return cachedEslintInstance;
+  return cachedEslintWithoutHooks;
 }
 
 /**
@@ -230,6 +279,7 @@ function getEslintInstance() {
  * @param {Object} params
  * @param {string} params.source - Raw JavaScript or JSX source code.
  * @param {string} params.relativePath - Relative file path for diagnostics and JSX detection.
+ * @param {Object} [params.options={}] - Analyzer options including react configuration.
  * @returns {Promise<{
  *   relativePath: string,
  *   findings: Array<import('../review/finding.js').FindingSchema>,
@@ -237,7 +287,7 @@ function getEslintInstance() {
  * }>}
  * @throws {EslintAnalysisError} When ESLint encounters a fatal analysis error.
  */
-export async function analyzeWithEslint({ source, relativePath }) {
+export async function analyzeWithEslint({ source, relativePath, options = {} }) {
   if (typeof source !== 'string') {
     throw new TypeError('Source code must be a string.');
   }
@@ -246,7 +296,8 @@ export async function analyzeWithEslint({ source, relativePath }) {
     throw new TypeError('Relative path must be a non-empty string.');
   }
 
-  const eslint = getEslintInstance();
+  const hooksEnabled = options.react?.enabled !== false && options.react?.hooks !== false;
+  const eslint = getEslintInstance(hooksEnabled);
 
   let results;
   try {
