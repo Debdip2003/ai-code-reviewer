@@ -66,12 +66,13 @@ export async function reviewWithAI({
   config = {},
   provider,
   budget,
-  changedLines
+  changedLines,
+  signal
 }) {
   const aiConfig = config.ai || {};
 
-  // 1. If AI is disabled, return immediately
-  if (!aiConfig.enabled) {
+  // 1. If AI is disabled or aborted, return immediately
+  if (!aiConfig.enabled || signal?.aborted) {
     return {
       enabled: false,
       findings: [],
@@ -129,6 +130,11 @@ export async function reviewWithAI({
 
   // 3. Process each eligible chunk concurrently with bounded concurrency
   await mapConcurrent(eligibleChunks, concurrency, async (chunk) => {
+    if (signal?.aborted) {
+      skippedCount++;
+      return;
+    }
+
     // Check budget before calling provider
     const budgetCheck = budget
       ? budget.canAttemptRequest({
@@ -156,7 +162,8 @@ export async function reviewWithAI({
         reasoningEffort: aiConfig.reasoningEffort,
         maxOutputTokens: aiConfig.maxOutputTokens,
         retries: aiConfig.retries,
-        changedLines
+        changedLines,
+        signal
       });
 
       if (budget) {

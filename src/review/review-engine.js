@@ -54,15 +54,18 @@ export async function mapConcurrent(items, concurrency, fn) {
  * @param {import('../ai/provider.js').AIProvider} [options.aiProvider] - Injected AI provider.
  * @param {Object} [options.reviewScope] - Review scope (full or changed).
  * @param {FileCache} [options.cache] - Cache instance.
+ * @param {AbortSignal} [options.signal] - Optional abort signal for cancellation.
  * @returns {Promise<Object>} Review result object with findings, failures, and summary.
  */
-export async function reviewRepository({ rootDirectory, config = {}, aiProvider, reviewScope, cache }) {
+export async function reviewRepository({ rootDirectory, config = {}, aiProvider, reviewScope, cache, signal }) {
+  const totalStartTime = performance.now();
   const targetRoot = rootDirectory || config.rootDirectory || process.cwd();
 
   const isChangedMode = Boolean(reviewScope && reviewScope.mode === 'changed' && reviewScope.files);
   const allowedRelativePaths = isChangedMode ? Object.keys(reviewScope.files) : null;
 
   // 1. Discover eligible files
+  const discoveryStartTime = performance.now();
   const discoveryResult = await discoverFiles({
     rootDirectory: targetRoot,
     includePatterns: config.include,
@@ -71,6 +74,7 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
     maxFileSizeKb: config.maxFileSizeKb,
     allowedRelativePaths
   });
+  const discoveryMs = Math.round(performance.now() - discoveryStartTime);
 
   const fileCache =
     cache ||
@@ -82,10 +86,12 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
     });
 
   const concurrency = config.concurrency || 2;
-  const isAiEnabled = Boolean(config.ai?.enabled);
+  const isAiEnabled = Boolean(config.ai?.enabled) && !signal?.aborted;
 
   let provider = null;
   let budget = null;
+  let effectiveModel = 'gpt-5.6-luna';
+
   if (isAiEnabled) {
     provider =
       aiProvider ||
@@ -94,7 +100,7 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
         timeoutMs: config.ai.timeoutMs
       });
 
-    const effectiveModel =
+    effectiveModel =
       provider?.isGroq && (!config.ai?.model || config.ai?.model === 'gpt-5.6-luna')
         ? 'openai/gpt-oss-120b'
         : config.ai?.model || 'gpt-5.6-luna';
@@ -112,12 +118,28 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
   let totalAiChunksReviewed = 0;
   let totalAiChunksSkipped = 0;
   let totalAiCacheHits = 0;
+  let totalAiMs = 0;
+  let aiNoticePrinted = false;
 
+  const analysisStartTime = performance.now();
   // 2. Read, parse, and analyze each file with bounded concurrency
   const processedResults = await mapConcurrent(
     discoveryResult.files,
     concurrency,
     async (file) => {
+      if (signal?.aborted) {
+        return {
+          ok: false,
+          failure: {
+            relativePath: file.relativePath,
+            stage: 'interrupted',
+            line: 1,
+            column: 0,
+            reason: 'Review interrupted by user cancellation'
+          }
+        };
+      }
+
       let rawSource = '';
       try {
         rawSource = await fs.readFile(file.absolutePath, 'utf-8');
@@ -258,7 +280,23 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
       const fileAiFailures = [];
       let aiChunks = { created: 0, reviewed: 0, skipped: 0 };
 
-      if (isAiEnabled && provider) {
+      if (isAiEnabled && provider && !signal?.aborted) {
+        if (!aiNoticePrinted && config.outputFormat !== 'json') {
+          aiNoticePrinted = true;
+          const providerName = provider.isGroq ? 'Groq' : 'OpenAI';
+          const maxSpend =
+            config.ai?.maxEstimatedCostUsd !== undefined
+              ? `$${Number(config.ai.maxEstimatedCostUsd).toFixed(2)}`
+              : '$0.25';
+          console.log('ACR AI review enabled');
+          console.log(`Provider: ${providerName}`);
+          console.log(`Model: ${effectiveModel}`);
+          console.log(`Eligible files: ${discoveryResult.files.length}`);
+          console.log(`Maximum estimated spend: ${maxSpend}\n`);
+          console.log('Source code from selected chunks will be sent to the configured AI provider.\n');
+        }
+
+        const aiStartTime = performance.now();
         try {
           const aiResult = await reviewWithAI({
             parsedFile: fileParseResult,
@@ -267,14 +305,17 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
             config,
             provider,
             budget,
-            changedLines: fileScope?.changedLines
+            changedLines: fileScope?.changedLines,
+            signal
           });
+          totalAiMs += Math.round(performance.now() - aiStartTime);
           fileFindings.push(...aiResult.findings);
           aiChunks = aiResult.chunks;
           if (Array.isArray(aiResult.failures) && aiResult.failures.length > 0) {
             fileAiFailures.push(...aiResult.failures);
           }
         } catch (error) {
+          totalAiMs += Math.round(performance.now() - aiStartTime);
           fileAiFailures.push({
             relativePath: file.relativePath,
             stage: 'ai',
@@ -304,7 +345,7 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
       // Filter findings to scope if changed mode is active
       const scopedFindings = filterFindingsByScope({ findings: fileFindings, reviewScope });
 
-      if (failures.length === 0) {
+      if (failures.length === 0 && !signal?.aborted) {
         // Cache successful complete analysis
         await fileCache.set(cacheKey, {
           findings: scopedFindings,
@@ -325,6 +366,9 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
       };
     }
   );
+
+  const analysisMs = Math.round(performance.now() - analysisStartTime);
+  const totalMs = Math.round(performance.now() - totalStartTime);
 
   const files = [];
   const failures = [];
@@ -468,7 +512,13 @@ export async function reviewRepository({ rootDirectory, config = {}, aiProvider,
     limited: discoveryResult.skipped.limited,
     scope: scopeSummary,
     cache: cacheSummary,
-    ai: aiSummary
+    ai: aiSummary,
+    timing: {
+      totalMs,
+      discoveryMs,
+      analysisMs,
+      aiMs: totalAiMs
+    }
   };
 
   return {

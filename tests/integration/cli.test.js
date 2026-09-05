@@ -13,7 +13,7 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
   let tempDir;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-reviewer-cli-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'acr-cli-test-'));
   });
 
   afterEach(async () => {
@@ -28,9 +28,11 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('ai-code-reviewer');
+    expect(result.stdout).toContain('acr');
     expect(result.stdout).toContain('review');
     expect(result.stdout).toContain('init');
+    expect(result.stdout).toContain('doctor');
+    expect(result.stdout).toContain('cache');
   });
 
   it('should display version information when invoked with --version', () => {
@@ -42,8 +44,36 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
     expect(result.stdout.trim()).toBe('0.1.0');
   });
 
+  describe('doctor command', () => {
+    it('should run doctor diagnostics in terminal mode', () => {
+      const result = spawnSync(process.execPath, [cliPath, 'doctor', tempDir], {
+        encoding: 'utf-8'
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('ACR Doctor');
+      expect(result.stdout).toContain('Node.js');
+      expect(result.stdout).toContain('Directory valid');
+      expect(result.stdout).toContain('configuration');
+    });
+
+    it('should output valid JSON diagnostics when --format json is provided', () => {
+      const result = spawnSync(process.execPath, [cliPath, 'doctor', tempDir, '--format', 'json'], {
+        encoding: 'utf-8'
+      });
+
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.status).toBe('doctor-pass');
+      expect(parsed.nodeSupported).toBe(true);
+      expect(parsed.rootValid).toBe(true);
+      expect(parsed.configValid).toBe(true);
+      expect(parsed.apiKeyConfigured).toBeDefined();
+    });
+  });
+
   describe('init command', () => {
-    it('should create .aireviewerrc.json in current directory with analyzers config', () => {
+    it('should create .acrrc.json in current directory with analyzers config', () => {
       const result = spawnSync(process.execPath, [cliPath, 'init'], {
         cwd: tempDir,
         encoding: 'utf-8'
@@ -115,6 +145,26 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
       expect(result.stdout).toContain('Analyzed: 1 file');
       expect(result.stdout).toContain('Total: 0');
       expect(result.stdout).toContain('Review passed');
+    });
+
+    it('should support --debug flag and write debug logs strictly to stderr', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'clean.js'),
+        'export function add(a, b) { return a + b; }\n'
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--debug', '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('[DEBUG]');
+      // Verify stdout is pure valid JSON without debug text
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.status).toBe('review-complete');
     });
 
     it('should exit with 1 when findings meet or exceed default medium threshold', async () => {

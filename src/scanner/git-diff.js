@@ -42,18 +42,29 @@ export class GitDiffError extends Error {
  *
  * @param {string[]} args - Git arguments array.
  * @param {string} cwd - Working directory for the Git process.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<{ stdout: string, stderr: string }>}
  * @throws {GitDiffError} If Git execution fails or is unavailable.
  */
-async function runGit(args, cwd) {
+async function runGit(args, cwd, signal) {
+  if (signal?.aborted) {
+    const abortErr = new Error('Git operation aborted.');
+    abortErr.name = 'AbortError';
+    throw abortErr;
+  }
+
   try {
     return await execFileAsync('git', args, {
       cwd,
       env: GIT_ENV,
       windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024
+      maxBuffer: 10 * 1024 * 1024,
+      signal
     });
   } catch (err) {
+    if (err && (err.name === 'AbortError' || signal?.aborted)) {
+      throw err;
+    }
     if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
       throw new GitDiffError('Git executable was not found on the system PATH.', err);
     }
@@ -68,14 +79,15 @@ async function runGit(args, cwd) {
  * Finds and validates the root directory of the enclosing Git repository.
  *
  * @param {string} rootDirectory - Path to start searching from.
+ * @param {AbortSignal} [signal] - Optional abort signal.
  * @returns {Promise<string>} Normalized absolute path to the Git repository root.
  * @throws {GitDiffError} If directory is not inside a Git repository.
  */
-export async function findGitRoot(rootDirectory = process.cwd()) {
+export async function findGitRoot(rootDirectory = process.cwd(), signal) {
   const resolvedRoot = path.resolve(rootDirectory);
 
   try {
-    const { stdout } = await runGit(['rev-parse', '--show-toplevel'], resolvedRoot);
+    const { stdout } = await runGit(['rev-parse', '--show-toplevel'], resolvedRoot, signal);
     const gitRoot = path.resolve(stdout.trim());
 
     // Verify rootDirectory is inside gitRoot
@@ -86,6 +98,9 @@ export async function findGitRoot(rootDirectory = process.cwd()) {
 
     return gitRoot;
   } catch (err) {
+    if (err && (err.name === 'AbortError' || signal?.aborted)) {
+      throw err;
+    }
     if (err instanceof GitDiffError) {
       if (err.message.includes('not a git repository') || err.message.includes('fatal:')) {
         throw new GitDiffError(`"${resolvedRoot}" is not inside a Git repository.`, err);
@@ -116,11 +131,12 @@ function countSourceLines(content) {
  * Checks if the repository HEAD ref is valid (i.e. has at least one commit).
  *
  * @param {string} gitRoot
+ * @param {AbortSignal} [signal]
  * @returns {Promise<boolean>}
  */
-async function hasHeadCommit(gitRoot) {
+async function hasHeadCommit(gitRoot, signal) {
   try {
-    await runGit(['rev-parse', '--verify', 'HEAD'], gitRoot);
+    await runGit(['rev-parse', '--verify', 'HEAD'], gitRoot, signal);
     return true;
   } catch {
     return false;
@@ -133,6 +149,7 @@ async function hasHeadCommit(gitRoot) {
  * @param {Object} options
  * @param {string} [options.rootDirectory=process.cwd()] - Target directory being reviewed.
  * @param {string} [options.baseRef] - Base reference for comparative branch review.
+ * @param {AbortSignal} [options.signal] - Optional abort signal.
  * @returns {Promise<{
  *   gitRoot: string,
  *   mode: 'working-tree' | 'base',
@@ -140,31 +157,33 @@ async function hasHeadCommit(gitRoot) {
  *   files: Array<{ relativePath: string, status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied', previousPath: string | null }>
  * }>}
  */
-export async function getChangedFiles({ rootDirectory = process.cwd(), baseRef } = {}) {
+export async function getChangedFiles({ rootDirectory = process.cwd(), baseRef, signal } = {}) {
   const resolvedRoot = path.resolve(rootDirectory);
-  const gitRoot = await findGitRoot(resolvedRoot);
+  const gitRoot = await findGitRoot(resolvedRoot, signal);
 
   const rawEntries = [];
 
   if (baseRef) {
     // 1. Validate base ref
     try {
-      await runGit(['rev-parse', '--verify', `${baseRef}^{commit}`], gitRoot);
+      await runGit(['rev-parse', '--verify', `${baseRef}^{commit}`], gitRoot, signal);
     } catch (err) {
+      if (err && (err.name === 'AbortError' || signal?.aborted)) throw err;
       throw new GitDiffError(`Invalid base reference "${baseRef}". Reference must point to a valid commit.`, err);
     }
 
     // 2. Find merge base
     let mergeBase;
     try {
-      const { stdout } = await runGit(['merge-base', baseRef, 'HEAD'], gitRoot);
+      const { stdout } = await runGit(['merge-base', baseRef, 'HEAD'], gitRoot, signal);
       mergeBase = stdout.trim();
     } catch (err) {
+      if (err && (err.name === 'AbortError' || signal?.aborted)) throw err;
       throw new GitDiffError(`Could not find a common merge base between "${baseRef}" and HEAD.`, err);
     }
 
     // 3. Diff merge base against HEAD
-    const { stdout } = await runGit(['diff', '--name-status', '--no-renames', mergeBase, 'HEAD'], gitRoot);
+    const { stdout } = await runGit(['diff', '--name-status', '--no-renames', mergeBase, 'HEAD'], gitRoot, signal);
     if (stdout.trim().length > 0) {
       for (const line of stdout.trim().split('\n')) {
         const parts = line.trim().split(/\t+/);
@@ -287,14 +306,21 @@ export async function getChangedLineRanges({
   rootDirectory = process.cwd(),
   relativePath,
   baseRef,
-  status
+  status,
+  signal
 }) {
+  if (signal?.aborted) {
+    const abortErr = new Error('Git operation aborted.');
+    abortErr.name = 'AbortError';
+    throw abortErr;
+  }
+
   if (!relativePath || typeof relativePath !== 'string') {
     throw new TypeError('relativePath is required');
   }
 
   const resolvedRoot = path.resolve(rootDirectory);
-  const gitRoot = await findGitRoot(resolvedRoot);
+  const gitRoot = await findGitRoot(resolvedRoot, signal);
   const absoluteFilePath = path.resolve(resolvedRoot, relativePath);
   const gitRelativePath = path.relative(gitRoot, absoluteFilePath).replace(/\\/g, '/');
 
@@ -318,19 +344,21 @@ export async function getChangedLineRanges({
   let diffOutput = '';
   try {
     if (baseRef) {
-      const { stdout: mbOut } = await runGit(['merge-base', baseRef, 'HEAD'], gitRoot);
+      const { stdout: mbOut } = await runGit(['merge-base', baseRef, 'HEAD'], gitRoot, signal);
       const mergeBase = mbOut.trim();
       const { stdout } = await runGit(
         ['diff', '--unified=0', '--no-color', mergeBase, 'HEAD', '--', gitRelativePath],
-        gitRoot
+        gitRoot,
+        signal
       );
       diffOutput = stdout;
     } else {
-      const hasHead = await hasHeadCommit(gitRoot);
+      const hasHead = await hasHeadCommit(gitRoot, signal);
       if (hasHead) {
         const { stdout } = await runGit(
           ['diff', '--unified=0', '--no-color', 'HEAD', '--', gitRelativePath],
-          gitRoot
+          gitRoot,
+          signal
         );
         diffOutput = stdout;
       } else {
@@ -341,6 +369,9 @@ export async function getChangedLineRanges({
       }
     }
   } catch (err) {
+    if (err && (err.name === 'AbortError' || signal?.aborted)) {
+      throw err;
+    }
     // If diff fails, fallback to entire file range if readable
     try {
       const content = await fs.readFile(absoluteFilePath, 'utf-8');

@@ -62,11 +62,11 @@ describe('discoverFiles', () => {
     expect(result.skipped.ignored).toBeGreaterThanOrEqual(3);
   });
 
-  it('should respect .gitignore and .aireviewerignore files', async () => {
+  it('should respect .gitignore and .acrignore files', async () => {
     await fs.mkdir(path.join(tempDir, 'src', 'generated'), { recursive: true });
 
     await fs.writeFile(path.join(tempDir, '.gitignore'), 'temp.js\n');
-    await fs.writeFile(path.join(tempDir, '.aireviewerignore'), 'src/generated/**\n');
+    await fs.writeFile(path.join(tempDir, '.acrignore'), 'src/generated/**\n');
 
     await fs.writeFile(path.join(tempDir, 'temp.js'), 'temp');
     await fs.writeFile(path.join(tempDir, 'src', 'generated', 'types.js'), 'types');
@@ -76,7 +76,7 @@ describe('discoverFiles', () => {
 
     expect(result.files.map((f) => f.relativePath)).toEqual(['src/main.js']);
     expect(result.ignoreSources).toContain('.gitignore');
-    expect(result.ignoreSources).toContain('.aireviewerignore');
+    expect(result.ignoreSources).toContain('.acrignore');
   });
 
   it('should skip files exceeding maxFileSizeKb and track in skipped.tooLarge', async () => {

@@ -305,8 +305,24 @@ export class OpenAIProvider extends AIProvider {
             classified.status < 600);
 
         if (isRetriable && attempt < maxAttempts - 1) {
+          if (signal?.aborted) {
+            const abortErr = new Error('AI review operation aborted.');
+            abortErr.name = 'AbortError';
+            throw abortErr;
+          }
           const delay = Math.min(2000, 100 * Math.pow(2, attempt) + Math.random() * 50);
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(resolve, delay);
+            if (signal) {
+              const onAbort = () => {
+                clearTimeout(timer);
+                const err = new Error('AI review operation aborted.');
+                err.name = 'AbortError';
+                reject(err);
+              };
+              signal.addEventListener('abort', onAbort, { once: true });
+            }
+          });
           continue;
         }
 

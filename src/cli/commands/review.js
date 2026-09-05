@@ -7,6 +7,8 @@ import { loadConfig } from '../../config/load-config.js';
 import { reviewRepository } from '../../review/review-engine.js';
 import { isAtOrAboveSeverity, SEVERITY_ORDER } from '../../review/severity.js';
 import { getChangedFiles, getChangedLineRanges, GitDiffError } from '../../scanner/git-diff.js';
+import { EXIT_CODES } from '../../review/exit-codes.js';
+import { logger } from '../../utils/logger.js';
 import { printReviewTerminalReport, printError } from '../output/terminal.js';
 import { formatReviewReportJson } from '../output/json.js';
 
@@ -24,27 +26,34 @@ import { formatReviewReportJson } from '../output/json.js';
  * @param {boolean} [options.changed=false] - Whether to review only changed files.
  * @param {string} [options.base] - Base Git reference for comparative review.
  * @param {boolean} [options.cache] - Whether cache is enabled.
+ * @param {boolean} [options.debug] - Whether debug logging is enabled.
+ * @param {AbortSignal} [options.signal] - Abort signal.
  * @returns {Promise<void>}
  */
 export async function reviewAction(targetPath = '.', options = {}) {
+  if (options.debug) {
+    logger.setLevel('debug');
+    logger.debug('Debug logging enabled for review command');
+  }
+
   // Validate --base requires --changed
   if (options.base && !options.changed) {
     printError('Option --base requires --changed to be specified.');
-    process.exitCode = 2;
+    process.exitCode = EXIT_CODES.EXECUTION_ERROR;
     return;
   }
 
   // Validate format option if provided on CLI
   if (options.format !== undefined && !['terminal', 'json'].includes(options.format)) {
     printError(`Invalid format "${options.format}". Allowed formats are: terminal, json.`);
-    process.exitCode = 2;
+    process.exitCode = EXIT_CODES.EXECUTION_ERROR;
     return;
   }
 
   // Validate severity option if provided on CLI
   if (options.severity !== undefined && !Object.keys(SEVERITY_ORDER).includes(options.severity)) {
     printError(`Invalid severity "${options.severity}". Allowed levels are: low, medium, high, critical.`);
-    process.exitCode = 2;
+    process.exitCode = EXIT_CODES.EXECUTION_ERROR;
     return;
   }
 
@@ -54,7 +63,7 @@ export async function reviewAction(targetPath = '.', options = {}) {
     parsedMaxFiles = Number(options.maxFiles);
     if (!Number.isInteger(parsedMaxFiles) || parsedMaxFiles <= 0) {
       printError('Option --max-files must be a positive integer.');
-      process.exitCode = 2;
+      process.exitCode = EXIT_CODES.EXECUTION_ERROR;
       return;
     }
   }
@@ -65,7 +74,7 @@ export async function reviewAction(targetPath = '.', options = {}) {
     parsedMaxAiCost = Number(options.maxAiCost);
     if (isNaN(parsedMaxAiCost) || parsedMaxAiCost <= 0 || parsedMaxAiCost > 100) {
       printError('Option --max-ai-cost must be a positive number up to 100.');
-      process.exitCode = 2;
+      process.exitCode = EXIT_CODES.EXECUTION_ERROR;
       return;
     }
   }
@@ -74,7 +83,7 @@ export async function reviewAction(targetPath = '.', options = {}) {
   if (options.model !== undefined) {
     if (typeof options.model !== 'string' || options.model.trim().length === 0) {
       printError('Option --model must be a non-empty string.');
-      process.exitCode = 2;
+      process.exitCode = EXIT_CODES.EXECUTION_ERROR;
       return;
     }
   }
@@ -116,7 +125,7 @@ export async function reviewAction(targetPath = '.', options = {}) {
       const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
       if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
         printError('AI review is enabled but OPENAI_API_KEY environment variable is missing (or GROQ_API_KEY).');
-        process.exitCode = 2;
+        process.exitCode = EXIT_CODES.EXECUTION_ERROR;
         return;
       }
     }
@@ -126,13 +135,19 @@ export async function reviewAction(targetPath = '.', options = {}) {
       try {
         const changedInfo = await getChangedFiles({
           rootDirectory: targetPath,
-          baseRef: options.base
+          baseRef: options.base,
+          signal: options.signal
         });
 
         const filesMap = {};
         let deletedFiles = 0;
 
         for (const f of changedInfo.files) {
+          if (options.signal?.aborted) {
+            process.exitCode = EXIT_CODES.INTERRUPTED;
+            return;
+          }
+
           if (f.status === 'deleted') {
             deletedFiles++;
             continue;
@@ -142,7 +157,8 @@ export async function reviewAction(targetPath = '.', options = {}) {
             rootDirectory: targetPath,
             relativePath: f.relativePath,
             baseRef: options.base,
-            status: f.status
+            status: f.status,
+            signal: options.signal
           });
 
           filesMap[f.relativePath] = {
@@ -160,18 +176,33 @@ export async function reviewAction(targetPath = '.', options = {}) {
           files: filesMap
         };
       } catch (gitErr) {
+        if (gitErr && (gitErr.name === 'AbortError' || options.signal?.aborted)) {
+          process.exitCode = EXIT_CODES.INTERRUPTED;
+          return;
+        }
         const gitMsg = gitErr instanceof GitDiffError ? gitErr.message : `Git error: ${gitErr.message}`;
         printError(gitMsg);
-        process.exitCode = 2;
+        process.exitCode = EXIT_CODES.EXECUTION_ERROR;
         return;
       }
+    }
+
+    if (options.signal?.aborted) {
+      process.exitCode = EXIT_CODES.INTERRUPTED;
+      return;
     }
 
     const reviewResult = await reviewRepository({
       rootDirectory: targetPath,
       config,
-      reviewScope
+      reviewScope,
+      signal: options.signal
     });
+
+    if (options.signal?.aborted) {
+      process.exitCode = EXIT_CODES.INTERRUPTED;
+      return;
+    }
 
     const threshold = config.severityThreshold || 'medium';
     const failedThreshold = reviewResult.findings.some((finding) =>
@@ -204,29 +235,31 @@ export async function reviewAction(targetPath = '.', options = {}) {
       });
     }
 
-    // Exit code determination:
-    // 2: execution/parse/analyzer failure or AI budget limit reached (takes precedence)
-    // 1: review threshold triggered
-    // 0: all passed cleanly
+    // Exit code determination
     if (reviewResult.failures.length > 0 || reviewResult.summary.ai?.stoppedByBudget) {
-      process.exitCode = 2;
+      process.exitCode = EXIT_CODES.EXECUTION_ERROR;
     } else if (failedThreshold) {
-      process.exitCode = 1;
+      process.exitCode = EXIT_CODES.FINDINGS;
     } else {
-      process.exitCode = 0;
+      process.exitCode = EXIT_CODES.SUCCESS;
     }
   } catch (error) {
+    if (error && (error.name === 'AbortError' || options.signal?.aborted)) {
+      process.exitCode = EXIT_CODES.INTERRUPTED;
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     printError(errorMessage);
-    process.exitCode = 2;
+    process.exitCode = EXIT_CODES.EXECUTION_ERROR;
   }
 }
 
 /**
  * Registers the 'review' command on a Commander program instance.
  * @param {import('commander').Command} program - Commander program instance.
+ * @param {AbortSignal} [signal] - Optional root cancellation signal.
  */
-export function registerReviewCommand(program) {
+export function registerReviewCommand(program, signal) {
   program
     .command('review', { isDefault: true })
     .description('Review JavaScript and React files in a directory or repository')
@@ -242,7 +275,8 @@ export function registerReviewCommand(program) {
     .option('--base <ref>', 'Base git reference for diff comparison (requires --changed)')
     .option('--cache', 'Enable local caching')
     .option('--no-cache', 'Disable local caching')
+    .option('--debug', 'Enable verbose debug logging')
     .action(async (targetPath, options) => {
-      await reviewAction(targetPath, options);
+      await reviewAction(targetPath, { ...options, signal });
     });
 }

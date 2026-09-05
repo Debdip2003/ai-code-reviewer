@@ -1,5 +1,5 @@
 /**
- * Default configuration constants for ai-code-reviewer.
+ * Default configuration constants for ACR (AI Code Reviewer).
  * Defined as an immutable, deep-frozen object to prevent accidental mutation.
  */
 
@@ -82,7 +82,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     '.next/**',
     'public/**',
     'vendor/**',
-    '.ai-code-reviewer-cache/**',
+    '.acr-cache/**',
     '**/*.min.js'
   ]),
   outputFormat: 'terminal',
@@ -121,10 +121,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   }),
   cache: Object.freeze({
     enabled: true,
-    directory: '.ai-code-reviewer-cache',
+    directory: '.acr-cache',
     maxEntries: 1000
   })
 });
 
-export const CONFIG_FILE_NAME = '.aireviewerrc.json';
-export const IGNORE_FILE_NAME = '.aireviewerignore';
+export const CONFIG_FILE_NAME = '.acrrc.json';
+export const IGNORE_FILE_NAME = '.acrignore';

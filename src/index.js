@@ -1,7 +1,11 @@
 /**
- * Main public API entry point for the ai-code-reviewer package.
+ * Main public API entry point for ACR (Autonomous Code Reviewer).
  * Pure programmatic exports with zero side-effects upon import.
  */
+
+// Exit Codes & Logging
+export { EXIT_CODES } from './review/exit-codes.js';
+export { Logger, logger } from './utils/logger.js';
 
 // Configuration
 export { DEFAULT_CONFIG, CONFIG_FILE_NAME, IGNORE_FILE_NAME } from './config/defaults.js';
@@ -56,3 +60,9 @@ export {
 } from './ai/response-schema.js';
 export { createSemanticChunks } from './ai/chunker.js';
 export { reviewWithAI } from './ai/review-with-ai.js';
+
+// CLI Diagnostics & Actions
+export { runDoctorChecks, doctorAction } from './cli/commands/doctor.js';
+export { reviewAction } from './cli/commands/review.js';
+export { initAction } from './cli/commands/init.js';
+export { cacheClearAction } from './cli/commands/cache.js';

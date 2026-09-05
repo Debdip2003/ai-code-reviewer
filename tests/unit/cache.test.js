@@ -166,7 +166,7 @@ describe('Local File Cache', () => {
       });
 
       const rawContent = await fs.readFile(
-        path.join(tempDir, '.ai-code-reviewer-cache', `${key}.json`),
+        path.join(tempDir, '.acr-cache', `${key}.json`),
         'utf-8'
       );
       expect(rawContent).not.toContain('SECRET_API_KEY_OR_SOURCE');
@@ -181,7 +181,7 @@ describe('Local File Cache', () => {
       });
 
       const key = 'd'.repeat(64);
-      const cacheFilePath = path.join(tempDir, '.ai-code-reviewer-cache', `${key}.json`);
+      const cacheFilePath = path.join(tempDir, '.acr-cache', `${key}.json`);
       await fs.mkdir(path.dirname(cacheFilePath), { recursive: true });
       await fs.writeFile(cacheFilePath, '{ corrupted invalid json content');
 
@@ -211,7 +211,7 @@ describe('Local File Cache', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       await cache.set(key3, { findings: [] });
 
-      const files = await fs.readdir(path.join(tempDir, '.ai-code-reviewer-cache'));
+      const files = await fs.readdir(path.join(tempDir, '.acr-cache'));
       const jsonFiles = files.filter((f) => f.endsWith('.json'));
 
       expect(jsonFiles.length).toBeLessThanOrEqual(2);
@@ -231,7 +231,7 @@ describe('Local File Cache', () => {
       expect(clearResult.deletedCount).toBe(2);
 
       const exists = await fs
-        .access(path.join(tempDir, '.ai-code-reviewer-cache'))
+        .access(path.join(tempDir, '.acr-cache'))
         .then(() => true)
         .catch(() => false);
       expect(exists).toBe(false);

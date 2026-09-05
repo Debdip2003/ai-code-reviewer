@@ -1,16 +1,16 @@
-# ai-code-reviewer
+# ACR (Autonomous Code Reviewer)
 
 A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using deterministic static analysis, code complexity analysis, React-specific inspections, and AI.
 
 ## Project Purpose
 
-`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted AI insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+`ACR` (`acr`) inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted AI insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
 
 ## Review Pipeline
 
 ```text
-Configuration
-→ File discovery
+Configuration & Diagnostics
+→ File discovery & Git scope resolution
 → Babel AST parsing
 → ESLint and React Hooks rules
 → Complexity analysis
@@ -22,7 +22,7 @@ Configuration
 → Scope-based finding filtering (changed lines)
 → Store sanitized results in local cache
 → Deduplication & severity filtering
-→ Terminal or JSON report
+→ Terminal or JSON report with monotonic timing
 ```
 
 ## Capabilities
@@ -33,12 +33,11 @@ Configuration
 * **AST Complexity Analysis Active:** Evaluates function line length, parameter count, cyclomatic complexity, and control-flow decision nesting depth using AST inspection.
 * **Git-Aware Changed-File Review (`--changed`, `--base <ref>`):** Read-only Git operations to review only modified, staged, added, or branched files and lines.
 * **Changed-Line Finding & Chunk Filtering:** Restricts deterministic findings and AI chunks to modified line hunks while preserving full function AST context.
-* **Content-Addressed Local Cache:** Deterministic SHA-256 caching of normalized findings, metrics, and AST summaries with zero source code or API key persistence.
+* **Content-Addressed Local Cache (`.acr-cache/`):** Deterministic SHA-256 caching of normalized findings, metrics, and AST summaries with zero source code or API key persistence.
 * **AI Code Review (Responses API Structured Outputs):** Inspects semantic units for subtle logic bugs, race conditions, edge cases, security risks, and unhandled promise rejections using OpenAI or Groq models.
 * **Bring-Your-Own-Key (BYOK):** AI review uses your own API key via `OPENAI_API_KEY` (or `GROQ_API_KEY`). API keys are never stored in config files or passed via CLI args.
-* **Semantic AST Chunking & Budget Safeguards:** Chunks top-level functions, classes, and components with conservative token estimation (`Math.ceil(length / 3)`). Enforces request limits, per-chunk token limits, and USD cost ceilings.
-* **Prompt Injection Defense:** Untrusted repository code, comments, and identifiers are strictly quarantined within `<untrusted_code>` delimiters with explicit instructions preventing model subversion.
-* **Isolated Configuration:** Operates with a controlled internal flat configuration; the target repository's `.eslintrc` or `eslint.config.js` is **never loaded**.
+* **Diagnostic Toolchain Health Check (`acr doctor`):** Inspects Node.js version, Git readiness, cache path safety, config validity, and key status.
+* **Graceful Signal Cancellation:** Full support for `AbortController` and `SIGINT`/`SIGTERM` termination across all stages with exit code `130`.
 * **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** repository files or Git state.
 
 ## Supported File Extensions
@@ -53,24 +52,30 @@ Configuration
 ### Add to an Existing Project
 
 ```bash
-npm install --save-dev ai-code-reviewer
+npm install --save-dev @code/acr
 ```
 
 ### One-Time Execution via npx
 
 ```bash
-npx ai-code-reviewer review .
+npx @code/acr review .
+```
+
+### Run Diagnostics
+
+```bash
+npx @code/acr doctor
 ```
 
 ### CI / Automation Execution
 
 ```bash
-npx ai-code-reviewer review . --format json --severity high
+npx @code/acr review . --format json --severity high
 ```
 
 ## AI Review & Environment Setup
 
-AI review is **disabled by default**. To activate AI assistance, provide your OpenAI API key and pass `--ai` or enable it in `.aireviewerrc.json`.
+AI review is **disabled by default**. To activate AI assistance, provide your OpenAI API key and pass `--ai` or enable it in `.acrrc.json`.
 
 ### Setting `OPENAI_API_KEY`
 
@@ -96,66 +101,84 @@ export OPENAI_API_KEY="your-key"
 
 ## CLI Usage
 
-### Initialize Configuration
+### System & Configuration Diagnostics (`acr doctor`)
 
-Bootstrap `.aireviewerrc.json` in the project root:
+Runs read-only environment and configuration sanity checks:
+
+```bash
+# Run diagnostics for current repository
+acr doctor
+
+# Run diagnostics for a specific project directory
+acr doctor ./path/to/project
+
+# Emit machine-readable diagnostics JSON
+acr doctor . --format json
+```
+
+### Initialize Configuration (`acr init`)
+
+Bootstrap `.acrrc.json` in the project root:
 
 ```bash
 # Initialize configuration
-ai-code-reviewer init
+acr init
 
 # Force overwrite existing configuration
-ai-code-reviewer init --force
+acr init --force
 ```
 
-### Review & Analyze Files
+### Review & Analyze Files (`acr review`)
 
 ```bash
 # Review current repository with deterministic analyzers (AI disabled by default)
-ai-code-reviewer review .
+acr review .
 
 # Review only git-changed files in the working tree (staged, unstaged, untracked)
-ai-code-reviewer review . --changed
+acr review . --changed
 
 # Review changes against a base branch or commit reference
-ai-code-reviewer review . --changed --base main
+acr review . --changed --base main
 
 # Enable AI code review using default model (gpt-5.6-luna)
-ai-code-reviewer review . --ai
+acr review . --ai
 
 # Review with a specific AI model
-ai-code-reviewer review . --ai --model gpt-5.6-luna
+acr review . --ai --model gpt-5.6-luna
 
 # Review with maximum estimated AI budget ceiling in USD
-ai-code-reviewer review . --ai --max-ai-cost 0.10
+acr review . --ai --max-ai-cost 0.10
 
 # Explicitly disable AI review (overriding configuration file)
-ai-code-reviewer review . --no-ai
+acr review . --no-ai
 
 # Explicitly disable local caching (overriding configuration file)
-ai-code-reviewer review . --no-cache
+acr review . --no-cache
 
 # Review a specific subdirectory with high severity threshold
-ai-code-reviewer review ./src --severity high
+acr review ./src --severity high
 
 # Emit machine-readable JSON report
-ai-code-reviewer review . --format json
+acr review . --format json
+
+# Enable debug logging (written strictly to stderr)
+acr review . --debug
 
 # Limit file discovery count
-ai-code-reviewer review ./src --max-files 25
+acr review ./src --max-files 25
 ```
 
-### Cache Management
+### Cache Management (`acr cache clear`)
 
 ```bash
 # Clear all cached review results for the current project
-ai-code-reviewer cache clear
+acr cache clear
 
 # Clear cache for a specific project directory
-ai-code-reviewer cache clear ./path/to/project
+acr cache clear ./path/to/project
 
 # Clear cache and emit JSON status
-ai-code-reviewer cache clear . --format json
+acr cache clear . --format json
 ```
 
 ## Exit Codes
@@ -163,6 +186,7 @@ ai-code-reviewer cache clear . --format json
 * **`0`**: Analysis completed successfully and no finding met or exceeded the configured severity threshold.
 * **`1`**: Review threshold triggered (at least one finding met or exceeded the severity threshold).
 * **`2`**: Configuration, Git execution, file scanning, reading, Babel parsing, analyzer failure, missing API key (when AI is enabled), or AI budget limit reached.
+* **`130`**: Process interrupted by user (`SIGINT` / `SIGTERM` / Ctrl+C).
 
 ## Analyzers & Rules
 
@@ -201,7 +225,7 @@ ai-code-reviewer cache clear . --format json
 
 ## Configuration
 
-### Configuration File (`.aireviewerrc.json`)
+### Configuration File (`.acrrc.json`)
 
 ```json
 {
@@ -219,7 +243,7 @@ ai-code-reviewer cache clear . --format json
     ".next/**",
     "public/**",
     "vendor/**",
-    ".ai-code-reviewer-cache/**",
+    ".acr-cache/**",
     "**/*.min.js"
   ],
   "outputFormat": "terminal",
@@ -246,7 +270,7 @@ ai-code-reviewer cache clear . --format json
   },
   "cache": {
     "enabled": true,
-    "directory": ".ai-code-reviewer-cache",
+    "directory": ".acr-cache",
     "maxEntries": 1000
   },
   "ai": {
@@ -340,7 +364,7 @@ Model pricing is versioned and informational:
       "writes": 1,
       "evictions": 0,
       "invalidEntries": 0,
-      "directory": "/path/to/project/.ai-code-reviewer-cache"
+      "directory": "/path/to/project/.acr-cache"
     },
     "ai": {
       "enabled": true,
@@ -352,6 +376,12 @@ Model pricing is versioned and informational:
       "cacheHits": 0,
       "estimatedCostUsd": 0.00045,
       "stoppedByBudget": false
+    },
+    "timing": {
+      "totalMs": 142,
+      "discoveryMs": 12,
+      "analysisMs": 130,
+      "aiMs": 0
     }
   }
 }
@@ -375,8 +405,10 @@ import {
   createSemanticChunks,
   createAIProvider,
   reviewWithAI,
-  reviewRepository
-} from 'ai-code-reviewer';
+  reviewRepository,
+  runDoctorChecks,
+  EXIT_CODES
+} from '@code/acr';
 
 // Run review in git-changed mode
 const changedInfo = await getChangedFiles({ rootDirectory: process.cwd() });

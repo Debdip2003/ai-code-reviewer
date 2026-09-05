@@ -23,7 +23,11 @@ yarn-error.log*
 pnpm-debug.log*
 *.log
 
-# Local AI reviewer cache files
-.ai-code-reviewer-cache/
-.ai-code-reviewer-cache
+# Local ACR cache files
+.acr-cache/
+.acr-cache
 .cache/
+
+# NPM tarball outputs
+*.tgz
+

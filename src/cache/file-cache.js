@@ -129,7 +129,7 @@ export class FileCache {
   /**
    * @param {Object} [options={}]
    * @param {string} [options.rootDirectory=process.cwd()] - Project root directory.
-   * @param {string} [options.directory='.ai-code-reviewer-cache'] - Cache directory.
+   * @param {string} [options.directory='.acr-cache'] - Cache directory.
    * @param {number} [options.maxEntries=1000] - Maximum number of entries to retain.
    * @param {boolean} [options.enabled=true] - Whether caching is enabled.
    */
@@ -138,7 +138,7 @@ export class FileCache {
     this.enabled = options.enabled !== undefined ? Boolean(options.enabled) : true;
     this.maxEntries = typeof options.maxEntries === 'number' ? options.maxEntries : 1000;
 
-    const dirName = options.directory || '.ai-code-reviewer-cache';
+    const dirName = options.directory || '.acr-cache';
     this.cacheDirectory = resolveSafeCacheDirectory(this.rootDirectory, dirName);
 
     this.hits = 0;

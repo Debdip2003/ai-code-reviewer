@@ -67,9 +67,9 @@ describe('createIgnoreMatcher', () => {
     expect(matcher.ignores('src/main.js')).toBe(false);
   });
 
-  it('should load and apply .aireviewerignore rules', async () => {
+  it('should load and apply .acrignore rules', async () => {
     await fs.writeFile(
-      path.join(tempDir, '.aireviewerignore'),
+      path.join(tempDir, '.acrignore'),
       'legacy/**\ngenerated/*.js\n'
     );
 
@@ -77,7 +77,7 @@ describe('createIgnoreMatcher', () => {
       rootDirectory: tempDir
     });
 
-    expect(matcher.sources).toContain('.aireviewerignore');
+    expect(matcher.sources).toContain('.acrignore');
     expect(matcher.ignores('legacy/old.js')).toBe(true);
     expect(matcher.ignores('generated/api.js')).toBe(true);
     expect(matcher.ignores('src/api.js')).toBe(false);

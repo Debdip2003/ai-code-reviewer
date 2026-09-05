@@ -7,8 +7,8 @@ import {
 
 describe('DEFAULT_CONFIG and Constants', () => {
   it('should export expected constant file names', () => {
-    expect(CONFIG_FILE_NAME).toBe('.aireviewerrc.json');
-    expect(IGNORE_FILE_NAME).toBe('.aireviewerignore');
+    expect(CONFIG_FILE_NAME).toBe('.acrrc.json');
+    expect(IGNORE_FILE_NAME).toBe('.acrignore');
   });
 
   it('should contain all required default configuration fields', () => {
@@ -22,7 +22,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
         '.next/**',
         'public/**',
         'vendor/**',
-        '.ai-code-reviewer-cache/**',
+        '.acr-cache/**',
         '**/*.min.js'
       ],
       outputFormat: 'terminal',
@@ -61,7 +61,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
       },
       cache: {
         enabled: true,
-        directory: '.ai-code-reviewer-cache',
+        directory: '.acr-cache',
         maxEntries: 1000
       }
     });

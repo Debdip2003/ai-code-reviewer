@@ -56,6 +56,11 @@ export async function initAction(options = {}, rootDirectory = process.cwd()) {
       maxEstimatedCostUsd: DEFAULT_CONFIG.ai.maxEstimatedCostUsd,
       timeoutMs: DEFAULT_CONFIG.ai.timeoutMs,
       retries: DEFAULT_CONFIG.ai.retries
+    },
+    cache: {
+      enabled: DEFAULT_CONFIG.cache.enabled,
+      directory: DEFAULT_CONFIG.cache.directory,
+      maxEntries: DEFAULT_CONFIG.cache.maxEntries
     }
   };
 
@@ -84,7 +89,7 @@ export async function initAction(options = {}, rootDirectory = process.cwd()) {
 export function registerInitCommand(program) {
   program
     .command('init')
-    .description('Initialize default ai-code-reviewer configuration in the current repository')
+    .description('Initialize default ACR configuration in the current repository')
     .option('-f, --force', 'Overwrite existing configuration file if present', false)
     .action(async (options) => {
       await initAction(options);

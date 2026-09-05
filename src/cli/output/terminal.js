@@ -70,6 +70,7 @@ function formatSeverityTag(severity) {
  * @param {string} [params.threshold='medium'] - Configured severity threshold.
  * @param {boolean} [params.failedThreshold=false] - Whether threshold was triggered.
  * @param {{ ignored: number, tooLarge: number, limited: number }} [params.skipped] - Skipped count.
+ * @param {{ totalMs?: number, discoveryMs?: number, analysisMs?: number, aiMs?: number }} [params.timing] - Monotonic timing metrics.
  */
 export function printReviewTerminalReport({
   rootDirectory,
@@ -80,7 +81,8 @@ export function printReviewTerminalReport({
   summary = {},
   threshold = 'medium',
   failedThreshold = false,
-  skipped = { ignored: 0, tooLarge: 0, limited: 0 }
+  skipped = { ignored: 0, tooLarge: 0, limited: 0 },
+  timing = null
 }) {
   console.log(`Reviewing project: ${rootDirectory}\n`);
   console.log(`Discovered: ${discoveredCount} file${discoveredCount === 1 ? '' : 's'}`);
@@ -218,6 +220,12 @@ export function printReviewTerminalReport({
 
   if (skipItems.length > 0) {
     console.log(`Skipped: ${skipItems.join(', ')}\n`);
+  }
+
+  const effectiveTiming = timing || summary.timing;
+  if (effectiveTiming && typeof effectiveTiming.totalMs === 'number') {
+    const seconds = (effectiveTiming.totalMs / 1000).toFixed(2);
+    console.log(`Completed in ${seconds}s\n`);
   }
 
   if (failedThreshold) {
