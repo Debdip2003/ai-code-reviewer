@@ -230,7 +230,9 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
       expect(parsed.summary.discovered).toBe(1);
       expect(parsed.summary.analyzed).toBe(1);
       expect(parsed.summary.functionsAnalyzed).toBe(1);
-      expect(parsed.summary.findingsBySource).toEqual({ eslint: 1, complexity: 0, react: 0 });
+      expect(parsed.summary.findingsBySource).toEqual({ eslint: 1, complexity: 0, react: 0, ai: 0 });
+      expect(parsed.summary.ai).toBeDefined();
+      expect(parsed.summary.ai.enabled).toBe(false);
 
       // Verify no ANSI escape codes in output
       expect(result.stdout).not.toMatch(/\x1B\[[0-9;]*m/);
@@ -338,6 +340,42 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
       expect(result.status).toBe(2);
       const combinedOutput = result.stdout + result.stderr;
       expect(combinedOutput).toContain('Invalid severity "extreme"');
+    });
+
+    it('should fail with exit code 2 when --ai is passed without OPENAI_API_KEY', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'clean.js'),
+        'export function add(a, b) { return a + b; }\n'
+      );
+
+      const envWithoutKey = { ...process.env };
+      delete envWithoutKey.OPENAI_API_KEY;
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--ai'],
+        {
+          encoding: 'utf-8',
+          env: envWithoutKey
+        }
+      );
+
+      expect(result.status).toBe(2);
+      const combinedOutput = result.stdout + result.stderr;
+      expect(combinedOutput).toContain('OPENAI_API_KEY environment variable is missing');
+    });
+
+    it('should fail with exit code 2 when invalid --max-ai-cost is provided', () => {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--max-ai-cost', '-5'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(2);
+      const combinedOutput = result.stdout + result.stderr;
+      expect(combinedOutput).toContain('Option --max-ai-cost must be a positive number');
     });
   });
 });

@@ -44,6 +44,18 @@ export async function initAction(options = {}, rootDirectory = process.cwd()) {
         detectDirectStateMutation: DEFAULT_CONFIG.analyzers.react.detectDirectStateMutation,
         detectArrayIndexKeys: DEFAULT_CONFIG.analyzers.react.detectArrayIndexKeys
       }
+    },
+    ai: {
+      enabled: DEFAULT_CONFIG.ai.enabled,
+      provider: DEFAULT_CONFIG.ai.provider,
+      model: DEFAULT_CONFIG.ai.model,
+      reasoningEffort: DEFAULT_CONFIG.ai.reasoningEffort,
+      maxOutputTokens: DEFAULT_CONFIG.ai.maxOutputTokens,
+      maxRequests: DEFAULT_CONFIG.ai.maxRequests,
+      maxInputTokensPerChunk: DEFAULT_CONFIG.ai.maxInputTokensPerChunk,
+      maxEstimatedCostUsd: DEFAULT_CONFIG.ai.maxEstimatedCostUsd,
+      timeoutMs: DEFAULT_CONFIG.ai.timeoutMs,
+      retries: DEFAULT_CONFIG.ai.retries
     }
   };
 

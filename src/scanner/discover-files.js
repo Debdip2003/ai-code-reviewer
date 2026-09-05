@@ -30,10 +30,30 @@ export async function discoverFiles(options = {}) {
   const rootDirectory = options.rootDirectory || process.cwd();
   const resolvedRoot = path.resolve(rootDirectory);
 
-  // 1. Validate root directory
+  // 1. Validate root directory or single file
   const rootStat = await fs.stat(resolvedRoot);
+  if (rootStat.isFile()) {
+    return {
+      rootDirectory: path.dirname(resolvedRoot),
+      files: [
+        {
+          absolutePath: resolvedRoot,
+          relativePath: path.basename(resolvedRoot),
+          extension: path.extname(resolvedRoot),
+          sizeBytes: rootStat.size
+        }
+      ],
+      skipped: {
+        ignored: 0,
+        tooLarge: 0,
+        limited: 0
+      },
+      ignoreSources: []
+    };
+  }
+
   if (!rootStat.isDirectory()) {
-    throw new Error(`The specified path is not a directory: "${resolvedRoot}"`);
+    throw new Error(`The specified path is not a directory or file: "${resolvedRoot}"`);
   }
 
   const includePatterns = options.includePatterns && options.includePatterns.length > 0

@@ -5,9 +5,49 @@
  */
 
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { DEFAULT_CONFIG, CONFIG_FILE_NAME } from './defaults.js';
+
+/**
+ * Loads environment variables from .env file into process.env if available.
+ * @param {string} [dir=process.cwd()]
+ */
+export function loadEnvironment(dir = process.cwd()) {
+  try {
+    const envPath = path.join(dir, '.env');
+    if (fsSync.existsSync(envPath)) {
+      if (typeof process.loadEnvFile === 'function') {
+        try {
+          process.loadEnvFile(envPath);
+        } catch {
+          // ignore
+        }
+      }
+      const content = fsSync.readFileSync(envPath, 'utf-8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (key === 'GROQ_API_KEY' || key === 'OPENAI_API_KEY') {
+            if (!process.env[key] || val.startsWith('gsk_')) {
+              process.env[key] = val;
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore environment loading errors
+  }
+}
 
 /**
  * Custom error class for configuration-related issues.
@@ -84,6 +124,59 @@ export const reactConfigSchema = z
   .strict();
 
 /**
+ * Zod schema for AI review configuration.
+ */
+export const aiConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.enum(['openai', 'groq'], {
+      errorMap: () => ({ message: "provider must be 'openai' or 'groq'" })
+    }).optional(),
+    model: z.string().min(1, 'model cannot be empty string').optional(),
+    reasoningEffort: z
+      .enum(['none', 'low', 'medium', 'high'], {
+        errorMap: () => ({ message: "reasoningEffort must be 'none', 'low', 'medium', or 'high'" })
+      })
+      .optional(),
+    maxOutputTokens: z
+      .number()
+      .int('maxOutputTokens must be an integer')
+      .min(100, 'maxOutputTokens must be at least 100')
+      .max(20000, 'maxOutputTokens cannot exceed 20000')
+      .optional(),
+    maxRequests: z
+      .number()
+      .int('maxRequests must be an integer')
+      .min(1, 'maxRequests must be at least 1')
+      .max(100, 'maxRequests cannot exceed 100')
+      .optional(),
+    maxInputTokensPerChunk: z
+      .number()
+      .int('maxInputTokensPerChunk must be an integer')
+      .min(500, 'maxInputTokensPerChunk must be at least 500')
+      .max(100000, 'maxInputTokensPerChunk cannot exceed 100000')
+      .optional(),
+    maxEstimatedCostUsd: z
+      .number()
+      .positive('maxEstimatedCostUsd must be greater than zero')
+      .max(100, 'maxEstimatedCostUsd cannot exceed 100')
+      .optional(),
+    timeoutMs: z
+      .number()
+      .int('timeoutMs must be an integer')
+      .min(1000, 'timeoutMs must be at least 1000')
+      .max(120000, 'timeoutMs cannot exceed 120000')
+      .optional(),
+    retries: z
+      .number()
+      .int('retries must be an integer')
+      .min(0, 'retries cannot be negative')
+      .max(5, 'retries cannot exceed 5')
+      .optional()
+  })
+  .strict();
+
+/**
  * Zod schema for analyzers configuration group.
  */
 export const analyzersConfigSchema = z
@@ -135,7 +228,8 @@ export const userConfigSchema = z
       .positive('maxFileSizeKb must be a positive integer')
       .max(500000, 'maxFileSizeKb cannot exceed 500000')
       .optional(),
-    analyzers: analyzersConfigSchema.optional()
+    analyzers: analyzersConfigSchema.optional(),
+    ai: aiConfigSchema.optional()
   })
   .strict();
 
@@ -184,7 +278,18 @@ function stripUndefined(obj = {}) {
  * @throws {ConfigurationError} When configuration file syntax or validation fails.
  */
 export async function loadConfig(options = {}) {
-  const rootDirectory = path.resolve(options.rootDirectory || process.cwd());
+  let rootDirectory = path.resolve(options.rootDirectory || process.cwd());
+
+  try {
+    const stat = await fs.stat(rootDirectory);
+    if (stat.isFile()) {
+      rootDirectory = path.dirname(rootDirectory);
+    }
+  } catch {
+    // Directory will be validated during scanning or fallback to defaults
+  }
+
+  loadEnvironment(rootDirectory);
   const configFilePath = path.join(rootDirectory, CONFIG_FILE_NAME);
 
   let fileConfig = {};
@@ -270,6 +375,25 @@ export async function loadConfig(options = {}) {
       cliReact.detectArrayIndexKeys ?? fileReact.detectArrayIndexKeys ?? defaultReact.detectArrayIndexKeys
   };
 
+  const defaultAi = DEFAULT_CONFIG.ai;
+  const fileAi = fileConfig.ai || {};
+  const cliAi = cleanCliOverrides.ai || {};
+
+  const mergedAi = {
+    enabled: cliAi.enabled ?? fileAi.enabled ?? defaultAi.enabled,
+    provider: cliAi.provider ?? fileAi.provider ?? defaultAi.provider,
+    model: cliAi.model ?? fileAi.model ?? defaultAi.model,
+    reasoningEffort: cliAi.reasoningEffort ?? fileAi.reasoningEffort ?? defaultAi.reasoningEffort,
+    maxOutputTokens: cliAi.maxOutputTokens ?? fileAi.maxOutputTokens ?? defaultAi.maxOutputTokens,
+    maxRequests: cliAi.maxRequests ?? fileAi.maxRequests ?? defaultAi.maxRequests,
+    maxInputTokensPerChunk:
+      cliAi.maxInputTokensPerChunk ?? fileAi.maxInputTokensPerChunk ?? defaultAi.maxInputTokensPerChunk,
+    maxEstimatedCostUsd:
+      cliAi.maxEstimatedCostUsd ?? fileAi.maxEstimatedCostUsd ?? defaultAi.maxEstimatedCostUsd,
+    timeoutMs: cliAi.timeoutMs ?? fileAi.timeoutMs ?? defaultAi.timeoutMs,
+    retries: cliAi.retries ?? fileAi.retries ?? defaultAi.retries
+  };
+
   return {
     include: [...mergedInclude],
     exclude: [...mergedExclude],
@@ -282,6 +406,7 @@ export async function loadConfig(options = {}) {
       complexity: mergedComplexity,
       react: mergedReact
     },
+    ai: mergedAi,
     rootDirectory
   };
 }

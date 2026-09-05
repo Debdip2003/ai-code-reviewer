@@ -37,6 +37,19 @@ describe('Finding Model and Validation', () => {
     expect(() => validateFinding(findingWithFix)).not.toThrow();
   });
 
+  it('should accept optional confidence field for AI findings', () => {
+    const aiFinding = {
+      ...validFinding,
+      source: 'ai',
+      confidence: 0.88
+    };
+    const validated = validateFinding(aiFinding);
+    expect(validated.confidence).toBe(0.88);
+
+    expect(() => validateFinding({ ...aiFinding, confidence: -0.1 })).toThrow();
+    expect(() => validateFinding({ ...aiFinding, confidence: 1.2 })).toThrow();
+  });
+
   it('should reject invalid severity level', () => {
     const invalid = {
       ...validFinding,

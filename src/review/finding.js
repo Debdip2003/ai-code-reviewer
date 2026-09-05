@@ -44,7 +44,8 @@ export const FindingSchema = z
     lineEnd: z.number().int('lineEnd must be an integer').positive('lineEnd must be positive'),
     columnEnd: z.number().int('columnEnd must be an integer').positive('columnEnd must be positive'),
     suggestion: z.string().nullable(),
-    fixable: z.boolean()
+    fixable: z.boolean(),
+    confidence: z.number().min(0, 'confidence must be >= 0').max(1, 'confidence must be <= 1').optional()
   })
   .strict()
   .refine(

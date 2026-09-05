@@ -39,12 +39,12 @@ describe('reviewRepository engine', () => {
     expect(result.summary.componentsAnalyzed).toBe(0);
     expect(result.summary.effectsAnalyzed).toBe(0);
     expect(result.summary.stateVariablesTracked).toBe(0);
-    expect(result.summary.findingsBySource).toEqual({ eslint: 0, complexity: 0, react: 0 });
+    expect(result.summary.findingsBySource).toEqual({ eslint: 0, complexity: 0, react: 0, ai: 0 });
     expect(result.findings).toHaveLength(0);
     expect(result.failures).toHaveLength(0);
   });
 
-  it('should combine and aggregate findings from ESLint, complexity, and React analyzers', async () => {
+  it('should combine and aggregate findings from ESLint, complexity, React, and AI analyzers', async () => {
     await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
     await fs.writeFile(
       path.join(tempDir, 'src', 'bad1.js'),
@@ -69,6 +69,30 @@ describe('reviewRepository engine', () => {
       }` // React direct state mutation
     );
 
+    const mockAiProvider = {
+      reviewChunk: async ({ chunk }) => {
+        if (chunk.symbolName === 'complexFunc') {
+          return {
+            findings: [
+              {
+                ruleId: 'ai/missing-input-validation',
+                severity: 'medium',
+                category: 'correctness',
+                title: 'Missing input validation',
+                message: 'Function inputs a-f are not validated before evaluation.',
+                lineStart: 1,
+                lineEnd: 6,
+                suggestion: 'Add validation guards',
+                confidence: 0.9
+              }
+            ],
+            usage: { inputTokens: 80, outputTokens: 30 }
+          };
+        }
+        return { findings: [], usage: { inputTokens: 50, outputTokens: 5 } };
+      }
+    };
+
     const customConfig = {
       ...DEFAULT_CONFIG,
       analyzers: {
@@ -77,23 +101,32 @@ describe('reviewRepository engine', () => {
           ...DEFAULT_CONFIG.analyzers.complexity,
           maxParameters: 5
         }
+      },
+      ai: {
+        ...DEFAULT_CONFIG.ai,
+        enabled: true
       }
     };
 
     const result = await reviewRepository({
       rootDirectory: tempDir,
-      config: customConfig
+      config: customConfig,
+      aiProvider: mockAiProvider
     });
 
     expect(result.summary.discovered).toBe(3);
     expect(result.summary.analyzed).toBe(3);
-    expect(result.summary.findings).toBeGreaterThanOrEqual(3);
+    expect(result.summary.findings).toBeGreaterThanOrEqual(4);
     expect(result.findings.some((f) => f.source === 'eslint' && f.ruleId === 'no-undef')).toBe(true);
     expect(result.findings.some((f) => f.source === 'complexity' && f.ruleId === 'complexity/too-many-parameters')).toBe(true);
     expect(result.findings.some((f) => f.source === 'react' && f.ruleId === 'react/direct-state-mutation')).toBe(true);
+    expect(result.findings.some((f) => f.source === 'ai' && f.ruleId === 'ai/missing-input-validation')).toBe(true);
     expect(result.summary.findingsBySource.eslint).toBeGreaterThanOrEqual(1);
     expect(result.summary.findingsBySource.complexity).toBeGreaterThanOrEqual(1);
     expect(result.summary.findingsBySource.react).toBeGreaterThanOrEqual(1);
+    expect(result.summary.findingsBySource.ai).toBe(1);
+    expect(result.summary.ai.enabled).toBe(true);
+    expect(result.summary.ai.chunksReviewed).toBeGreaterThanOrEqual(1);
     expect(result.summary.componentsAnalyzed).toBeGreaterThanOrEqual(1);
     expect(result.summary.stateVariablesTracked).toBeGreaterThanOrEqual(1);
   });

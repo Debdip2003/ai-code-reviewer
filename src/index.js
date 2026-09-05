@@ -32,3 +32,16 @@ export {
 } from './review/severity.js';
 export { deduplicateFindings } from './review/deduplicate.js';
 export { reviewRepository } from './review/review-engine.js';
+
+// AI Review Foundation
+export {
+  AIProvider,
+  AIProviderError,
+  createAIProvider
+} from './ai/provider.js';
+export {
+  AIFindingSchema,
+  AIReviewResponseSchema
+} from './ai/response-schema.js';
+export { createSemanticChunks } from './ai/chunker.js';
+export { reviewWithAI } from './ai/review-with-ai.js';

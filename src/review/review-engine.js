@@ -10,6 +10,9 @@ import { summarizeAst } from '../parser/summarize-ast.js';
 import { analyzeWithEslint } from '../analyzers/eslint-analyzer.js';
 import { analyzeComplexity } from '../analyzers/complexity-analyzer.js';
 import { analyzeReact } from '../analyzers/react-analyzer.js';
+import { createAIProvider } from '../ai/provider.js';
+import { AIBudgetManager } from '../ai/budget.js';
+import { reviewWithAI } from '../ai/review-with-ai.js';
 import { deduplicateFindings } from './deduplicate.js';
 import { sortFindings, countFindingsBySeverity } from './severity.js';
 
@@ -73,7 +76,7 @@ export async function mapConcurrent(items, concurrency, fn) {
  *   }
  * }>}
  */
-export async function reviewRepository({ rootDirectory, config = {} }) {
+export async function reviewRepository({ rootDirectory, config = {}, aiProvider }) {
   const targetRoot = rootDirectory || config.rootDirectory || process.cwd();
 
   // 1. Discover eligible files
@@ -86,6 +89,35 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   });
 
   const concurrency = config.concurrency || 2;
+  const isAiEnabled = Boolean(config.ai?.enabled);
+
+  let provider = null;
+  let budget = null;
+  if (isAiEnabled) {
+    provider =
+      aiProvider ||
+      createAIProvider({
+        provider: config.ai.provider,
+        timeoutMs: config.ai.timeoutMs
+      });
+
+    const effectiveModel =
+      provider?.isGroq && (!config.ai?.model || config.ai?.model === 'gpt-5.6-luna')
+        ? 'openai/gpt-oss-120b'
+        : config.ai?.model || 'gpt-5.6-luna';
+
+    budget = new AIBudgetManager({
+      model: effectiveModel,
+      maxRequests: config.ai.maxRequests,
+      maxInputTokensPerChunk: config.ai.maxInputTokensPerChunk,
+      maxEstimatedCostUsd: config.ai.maxEstimatedCostUsd,
+      maxOutputTokens: config.ai.maxOutputTokens
+    });
+  }
+
+  let totalAiChunksCreated = 0;
+  let totalAiChunksReviewed = 0;
+  let totalAiChunksSkipped = 0;
 
   // 2. Read, parse, and analyze each file with bounded concurrency
   const processedResults = await mapConcurrent(
@@ -187,10 +219,40 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
         };
       }
 
+      const fileAiFailures = [];
+      let aiChunks = { created: 0, reviewed: 0, skipped: 0 };
+
+      if (isAiEnabled && provider) {
+        try {
+          const aiResult = await reviewWithAI({
+            parsedFile: fileParseResult,
+            astSummary,
+            staticFindings: [...fileFindings],
+            config,
+            provider,
+            budget
+          });
+          fileFindings.push(...aiResult.findings);
+          aiChunks = aiResult.chunks;
+          if (Array.isArray(aiResult.failures) && aiResult.failures.length > 0) {
+            fileAiFailures.push(...aiResult.failures);
+          }
+        } catch (error) {
+          fileAiFailures.push({
+            relativePath: file.relativePath,
+            stage: 'ai',
+            line: 1,
+            column: 1,
+            reason: error.message || 'AI review error'
+          });
+        }
+      }
+
       const failures = [];
       if (hadEslintFailure) failures.push(eslintFailure);
       if (hadComplexityFailure) failures.push(complexityFailure);
       if (hadReactFailure) failures.push(reactFailure);
+      if (fileAiFailures.length > 0) failures.push(...fileAiFailures);
 
       return {
         ok: failures.length === 0,
@@ -205,6 +267,7 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
             stateVariables: reactResult.stateVariables
           }
         },
+        aiChunks,
         findings: fileFindings,
         failures
       };
@@ -224,6 +287,12 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   for (const item of processedResults) {
     if (item.astSummary) {
       parsedCount++;
+    }
+
+    if (item.aiChunks) {
+      totalAiChunksCreated += item.aiChunks.created || 0;
+      totalAiChunksReviewed += item.aiChunks.reviewed || 0;
+      totalAiChunksSkipped += item.aiChunks.skipped || 0;
     }
 
     if (item.metrics) {
@@ -272,7 +341,8 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
   const findingsBySource = {
     eslint: 0,
     complexity: 0,
-    react: 0
+    react: 0,
+    ai: 0
   };
   for (const finding of sortedFindings) {
     if (finding.source === 'eslint') {
@@ -281,8 +351,26 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
       findingsBySource.complexity++;
     } else if (finding.source === 'react') {
       findingsBySource.react++;
+    } else if (finding.source === 'ai') {
+      findingsBySource.ai++;
     }
   }
+
+  const budgetSummary = budget ? budget.getSummary() : null;
+  const aiSummary = {
+    enabled: isAiEnabled,
+    model: isAiEnabled
+      ? (provider?.isGroq && (!config.ai?.model || config.ai?.model === 'gpt-5.6-luna')
+          ? 'openai/gpt-oss-120b'
+          : config.ai?.model || 'gpt-5.6-luna')
+      : null,
+    chunksCreated: totalAiChunksCreated,
+    chunksReviewed: totalAiChunksReviewed,
+    chunksSkipped: totalAiChunksSkipped,
+    requests: budgetSummary ? budgetSummary.requestsCompleted : 0,
+    estimatedCostUsd: budgetSummary ? budgetSummary.estimatedCostUsd : null,
+    stoppedByBudget: budget ? budget.stoppedByBudget : false
+  };
 
   const summary = {
     discovered: discoveryResult.files.length,
@@ -298,7 +386,8 @@ export async function reviewRepository({ rootDirectory, config = {} }) {
     severity: severityCounts,
     ignored: discoveryResult.skipped.ignored,
     tooLarge: discoveryResult.skipped.tooLarge,
-    limited: discoveryResult.skipped.limited
+    limited: discoveryResult.skipped.limited,
+    ai: aiSummary
   };
 
   return {

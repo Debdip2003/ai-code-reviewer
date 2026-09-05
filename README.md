@@ -4,31 +4,37 @@ A production-quality, terminal-first npm package for reviewing JavaScript and Re
 
 ## Project Purpose
 
-`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+`ai-code-reviewer` inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted AI insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
 
 ## Review Pipeline
 
 ```text
 Configuration
 → File discovery
-→ Babel parsing
+→ Babel AST parsing
 → ESLint and React Hooks rules
 → Complexity analysis
 → Custom React AST analysis
-→ Finding normalization
+→ Semantic code chunking
+→ Token and budget checks
+→ Provider abstraction & OpenAI Responses API (Structured Outputs)
+→ Finding normalization & confidence filtering (≥ 0.65)
 → Deduplication & severity filtering
 → Terminal or JSON report
 ```
 
-## Current Capabilities
+## Capabilities
 
 * **Deterministic Static Analysis Active:** Evaluates JavaScript and React JSX files using internal ESLint rules focused on bug prevention.
 * **React Hooks Rules Active:** Enforces official React Hooks rules (`react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`) via isolated flat configuration.
 * **Custom React AST Analysis Active:** Detects oversized components, direct state mutations, async `useEffect` callbacks, oversized effect callbacks, and array-index keys.
 * **AST Complexity Analysis Active:** Evaluates function line length, parameter count, cyclomatic complexity, and control-flow decision nesting depth using AST inspection.
+* **AI Code Review (Responses API Structured Outputs):** Inspects semantic units for subtle logic bugs, race conditions, edge cases, security risks, and unhandled promise rejections using OpenAI models.
+* **Bring-Your-Own-Key (BYOK):** AI review uses your own OpenAI API key via the standard `OPENAI_API_KEY` environment variable. API keys are never stored in config files or passed via CLI args.
+* **Semantic AST Chunking & Budget Safeguards:** Chunks top-level functions, classes, and components with conservative token estimation (`Math.ceil(length / 3)`). Enforces request limits, per-chunk token limits, and USD cost ceilings.
+* **Prompt Injection Defense:** Untrusted repository code, comments, and identifiers are strictly quarantined within `<untrusted_code>` delimiters with explicit instructions preventing model subversion.
 * **Isolated Configuration:** Operates with a controlled internal flat configuration; the target repository's `.eslintrc` or `eslint.config.js` is **never loaded**.
 * **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** source files.
-* **AI Provider Integration:** AI-powered reasoning and semantic recommendations will be integrated in upcoming releases.
 * **Git Diff Analysis:** Differential review via `--changed` is reserved for a future release.
 
 ## Supported File Extensions
@@ -58,6 +64,32 @@ npx ai-code-reviewer review .
 npx ai-code-reviewer review . --format json --severity high
 ```
 
+## AI Review & Environment Setup
+
+AI review is **disabled by default**. To activate AI assistance, provide your OpenAI API key and pass `--ai` or enable it in `.aireviewerrc.json`.
+
+### Setting `OPENAI_API_KEY`
+
+#### PowerShell (Windows)
+
+```powershell
+$env:OPENAI_API_KEY="your-key"
+```
+
+#### Command Prompt (Windows)
+
+```cmd
+set OPENAI_API_KEY=your-key
+```
+
+#### macOS & Linux (Bash / Zsh)
+
+```bash
+export OPENAI_API_KEY="your-key"
+```
+
+> **Security Note:** Never commit API keys or `.env` files to version control. API keys are never accepted as command-line arguments to prevent shell history exposure.
+
 ## CLI Usage
 
 ### Initialize Configuration
@@ -75,8 +107,20 @@ ai-code-reviewer init --force
 ### Review & Analyze Files
 
 ```bash
-# Review current repository with default medium threshold
+# Review current repository with deterministic analyzers (AI disabled by default)
 ai-code-reviewer review .
+
+# Enable AI code review using default model (gpt-5.6-luna)
+ai-code-reviewer review . --ai
+
+# Review with a specific AI model
+ai-code-reviewer review . --ai --model gpt-5.6-luna
+
+# Review with maximum estimated AI budget ceiling in USD
+ai-code-reviewer review . --ai --max-ai-cost 0.10
+
+# Explicitly disable AI review (overriding configuration file)
+ai-code-reviewer review . --no-ai
 
 # Review a specific subdirectory with high severity threshold
 ai-code-reviewer review ./src --severity high
@@ -92,7 +136,7 @@ ai-code-reviewer review ./src --max-files 25
 
 * **`0`**: Analysis completed successfully and no finding met or exceeded the configured severity threshold.
 * **`1`**: Review threshold triggered (at least one finding met or exceeded the severity threshold).
-* **`2`**: Configuration, file scanning, reading, Babel parsing, or analyzer failure.
+* **`2`**: Configuration, file scanning, reading, Babel parsing, analyzer failure, missing API key (when AI is enabled), or AI budget limit reached.
 
 ## Analyzers & Rules
 
@@ -117,6 +161,17 @@ ai-code-reviewer review ./src --max-files 25
 * **Parameter Count (`complexity/too-many-parameters`)**: Top-level formal parameters, including destructuring and rest parameters.
 * **Cyclomatic Complexity (`complexity/high-cyclomatic-complexity`)**: Decision points (`if`, `? :`, loops, `catch`, `switch` cases, `&&`, `||`, `??`).
 * **Decision Nesting Depth (`complexity/deep-nesting`)**: Maximum control-flow nesting depth (`if`, loops, `switch`, `try`/`catch`).
+
+### 4. AI Review Analyzer
+
+* **Category Focus**:
+  * Correctness and subtle logic edge cases
+  * Security risks visible in the code
+  * Resource and performance anti-patterns
+  * Maintainability issues not covered by deterministic linters
+  * Visible unhandled asynchronous rejections and error handling gaps
+* **Confidence Filtering**: AI findings require a minimum confidence score of `0.65`.
+* **Line Range Guard**: AI findings must fall strictly within the semantic chunk's verified line range.
 
 ## Configuration
 
@@ -161,33 +216,32 @@ ai-code-reviewer review ./src --max-files 25
       "detectDirectStateMutation": true,
       "detectArrayIndexKeys": true
     }
+  },
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+    "maxOutputTokens": 2000,
+    "maxRequests": 20,
+    "maxInputTokensPerChunk": 12000,
+    "maxEstimatedCostUsd": 0.25,
+    "timeoutMs": 30000,
+    "retries": 2
   }
 }
 ```
 
-### Disabling React Analysis or Hook Rules
+## Model Pricing & Cost Controls
 
-```json
-{
-  "analyzers": {
-    "react": {
-      "enabled": false
-    }
-  }
-}
-```
+Model pricing is versioned and informational:
 
-To disable only official React Hook ESLint rules while keeping custom React AST rules:
+| Model | Input / 1M tokens | Output / 1M tokens | Pricing as of |
+| :--- | :--- | :--- | :--- |
+| `gpt-5.6-luna` | $0.20 | $1.20 | 2026-09-05 |
 
-```json
-{
-  "analyzers": {
-    "react": {
-      "hooks": false
-    }
-  }
-}
-```
+* For custom or unrecognized model names, request and token limits remain strictly enforced while cost estimation is reported as `unavailable for configured model`.
+* AI findings are non-deterministic recommendations and should be verified before merging.
 
 ## JSON Output Example
 
@@ -197,19 +251,20 @@ To disable only official React Hook ESLint rules while keeping custom React AST 
   "rootDirectory": "/path/to/project",
   "findings": [
     {
-      "source": "react",
-      "ruleId": "react/direct-state-mutation",
+      "source": "ai",
+      "ruleId": "ai/unhandled-async-error",
       "severity": "high",
       "category": "correctness",
-      "title": "Direct React state mutation",
-      "message": "React state 'items' is mutated directly through 'push'.",
-      "relativePath": "src/ProductList.jsx",
-      "lineStart": 18,
-      "columnStart": 5,
-      "lineEnd": 18,
-      "columnEnd": 22,
-      "suggestion": "Create a new value and pass it to the state setter instead of mutating React state directly.",
-      "fixable": false
+      "title": "Unhandled Async Promise Rejection",
+      "message": "The async call to fetchData() lacks a catch block or try/catch wrapper.",
+      "relativePath": "src/api.js",
+      "lineStart": 10,
+      "columnStart": 1,
+      "lineEnd": 15,
+      "columnEnd": 1,
+      "suggestion": "Wrap the call in a try/catch block to handle network errors.",
+      "fixable": false,
+      "confidence": 0.95
     }
   ],
   "failures": [],
@@ -221,12 +276,13 @@ To disable only official React Hook ESLint rules while keeping custom React AST 
     "findings": 1,
     "functionsAnalyzed": 2,
     "componentsAnalyzed": 1,
-    "effectsAnalyzed": 1,
-    "stateVariablesTracked": 1,
+    "effectsAnalyzed": 0,
+    "stateVariablesTracked": 0,
     "findingsBySource": {
       "eslint": 0,
       "complexity": 0,
-      "react": 1
+      "react": 0,
+      "ai": 1
     },
     "severity": {
       "critical": 0,
@@ -236,7 +292,17 @@ To disable only official React Hook ESLint rules while keeping custom React AST 
     },
     "ignored": 0,
     "tooLarge": 0,
-    "limited": 0
+    "limited": 0,
+    "ai": {
+      "enabled": true,
+      "model": "gpt-5.6-luna",
+      "chunksCreated": 2,
+      "chunksReviewed": 2,
+      "chunksSkipped": 0,
+      "requests": 2,
+      "estimatedCostUsd": 0.00045,
+      "stoppedByBudget": false
+    }
   }
 }
 ```
@@ -251,13 +317,18 @@ import {
   analyzeWithEslint,
   analyzeComplexity,
   analyzeReact,
+  createSemanticChunks,
+  createAIProvider,
+  reviewWithAI,
   reviewRepository
 } from 'ai-code-reviewer';
 
-// Run complete repository review
+// Run complete repository review with AI
 const result = await reviewRepository({
   rootDirectory: process.cwd(),
-  config: { severityThreshold: 'high' }
+  config: {
+    ai: { enabled: true, model: 'gpt-5.6-luna' }
+  }
 });
 
 console.log(`Analyzed ${result.summary.discovered} files with ${result.findings.length} findings.`);

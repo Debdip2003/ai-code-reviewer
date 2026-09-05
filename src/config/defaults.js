@@ -29,6 +29,20 @@
  */
 
 /**
+ * @typedef {Object} AIConfig
+ * @property {boolean} enabled - Whether AI review is active.
+ * @property {'openai'} provider - AI provider identifier.
+ * @property {string} model - Target AI model name.
+ * @property {'none' | 'low' | 'medium' | 'high'} reasoningEffort - Reasoning effort level for reasoning-capable models.
+ * @property {number} maxOutputTokens - Maximum allowable output tokens per request.
+ * @property {number} maxRequests - Maximum number of AI requests allowed per review run.
+ * @property {number} maxInputTokensPerChunk - Maximum input tokens permitted per chunk before skipping.
+ * @property {number} maxEstimatedCostUsd - Maximum allowable estimated total cost in USD for the review run.
+ * @property {number} timeoutMs - Timeout in milliseconds for AI requests.
+ * @property {number} retries - Maximum retry attempts for transient failures.
+ */
+
+/**
  * @typedef {Object} ReviewerConfig
  * @property {readonly string[]} include - Glob patterns for files to include in the review.
  * @property {readonly string[]} exclude - Glob patterns for files and directories to exclude from the review.
@@ -38,6 +52,7 @@
  * @property {number} maxFiles - Maximum number of files to discover/review.
  * @property {number} maxFileSizeKb - Maximum size in kilobytes for a single file to be analyzed.
  * @property {AnalyzersConfig} analyzers - Analyzer-specific configuration settings.
+ * @property {AIConfig} ai - AI review configuration settings.
  */
 
 /**
@@ -82,6 +97,18 @@ export const DEFAULT_CONFIG = Object.freeze({
       detectDirectStateMutation: true,
       detectArrayIndexKeys: true
     })
+  }),
+  ai: Object.freeze({
+    enabled: false,
+    provider: 'openai',
+    model: 'gpt-5.6-luna',
+    reasoningEffort: 'low',
+    maxOutputTokens: 2000,
+    maxRequests: 20,
+    maxInputTokensPerChunk: 12000,
+    maxEstimatedCostUsd: 0.25,
+    timeoutMs: 30000,
+    retries: 2
   })
 });
 

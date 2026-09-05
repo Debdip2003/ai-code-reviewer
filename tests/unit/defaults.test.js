@@ -45,6 +45,18 @@ describe('DEFAULT_CONFIG and Constants', () => {
           detectDirectStateMutation: true,
           detectArrayIndexKeys: true
         }
+      },
+      ai: {
+        enabled: false,
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        reasoningEffort: 'low',
+        maxOutputTokens: 2000,
+        maxRequests: 20,
+        maxInputTokensPerChunk: 12000,
+        maxEstimatedCostUsd: 0.25,
+        timeoutMs: 30000,
+        retries: 2
       }
     });
   });
@@ -56,6 +68,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.complexity)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.react)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.ai)).toBe(true);
 
     expect(() => {
       // @ts-expect-error - testing immutability
@@ -65,6 +78,11 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(() => {
       // @ts-expect-error - testing immutability
       DEFAULT_CONFIG.analyzers.react.enabled = false;
+    }).toThrow();
+
+    expect(() => {
+      // @ts-expect-error - testing immutability
+      DEFAULT_CONFIG.ai.enabled = true;
     }).toThrow();
   });
 });

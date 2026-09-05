@@ -53,6 +53,26 @@ export async function reviewAction(targetPath = '.', options = {}) {
     }
   }
 
+  // Validate maxAiCost option if provided on CLI
+  let parsedMaxAiCost;
+  if (options.maxAiCost !== undefined) {
+    parsedMaxAiCost = Number(options.maxAiCost);
+    if (isNaN(parsedMaxAiCost) || parsedMaxAiCost <= 0 || parsedMaxAiCost > 100) {
+      printError('Option --max-ai-cost must be a positive number up to 100.');
+      process.exitCode = 2;
+      return;
+    }
+  }
+
+  // Validate model option if provided on CLI
+  if (options.model !== undefined) {
+    if (typeof options.model !== 'string' || options.model.trim().length === 0) {
+      printError('Option --model must be a non-empty string.');
+      process.exitCode = 2;
+      return;
+    }
+  }
+
   const cliOverrides = {};
   if (options.format !== undefined) {
     cliOverrides.outputFormat = options.format;
@@ -63,6 +83,18 @@ export async function reviewAction(targetPath = '.', options = {}) {
   if (options.severity !== undefined) {
     cliOverrides.severityThreshold = options.severity;
   }
+  if (options.ai !== undefined) {
+    cliOverrides.ai = cliOverrides.ai || {};
+    cliOverrides.ai.enabled = Boolean(options.ai);
+  }
+  if (options.model !== undefined) {
+    cliOverrides.ai = cliOverrides.ai || {};
+    cliOverrides.ai.model = options.model.trim();
+  }
+  if (parsedMaxAiCost !== undefined) {
+    cliOverrides.ai = cliOverrides.ai || {};
+    cliOverrides.ai.maxEstimatedCostUsd = parsedMaxAiCost;
+  }
 
   try {
     const config = await loadConfig({
@@ -70,8 +102,17 @@ export async function reviewAction(targetPath = '.', options = {}) {
       cliOverrides
     });
 
+    if (config.ai?.enabled) {
+      const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+      if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+        printError('AI review is enabled but OPENAI_API_KEY environment variable is missing (or GROQ_API_KEY).');
+        process.exitCode = 2;
+        return;
+      }
+    }
+
     const reviewResult = await reviewRepository({
-      rootDirectory: config.rootDirectory,
+      rootDirectory: targetPath,
       config
     });
 
@@ -107,10 +148,10 @@ export async function reviewAction(targetPath = '.', options = {}) {
     }
 
     // Exit code determination:
-    // 2: execution/parse/analyzer failure (takes precedence)
+    // 2: execution/parse/analyzer failure or AI budget limit reached (takes precedence)
     // 1: review threshold triggered
     // 0: all passed cleanly
-    if (reviewResult.failures.length > 0) {
+    if (reviewResult.failures.length > 0 || reviewResult.summary.ai?.stoppedByBudget) {
       process.exitCode = 2;
     } else if (failedThreshold) {
       process.exitCode = 1;
@@ -130,12 +171,16 @@ export async function reviewAction(targetPath = '.', options = {}) {
  */
 export function registerReviewCommand(program) {
   program
-    .command('review')
+    .command('review', { isDefault: true })
     .description('Review JavaScript and React files in a directory or repository')
     .argument('[path]', 'Path to the directory or file to review', '.')
     .option('-f, --format <format>', 'Output format (terminal or json)')
     .option('-m, --max-files <number>', 'Maximum number of files to discover/review')
     .option('-s, --severity <level>', 'Minimum finding severity threshold (low, medium, high, critical)')
+    .option('--ai', 'Enable AI code review')
+    .option('--no-ai', 'Disable AI code review')
+    .option('--model <model>', 'AI model identifier (e.g. gpt-5.6-luna)')
+    .option('--max-ai-cost <usd>', 'Maximum allowable estimated AI cost in USD')
     .option('--changed', 'Review only git-changed files', false)
     .action(async (targetPath, options) => {
       await reviewAction(targetPath, options);

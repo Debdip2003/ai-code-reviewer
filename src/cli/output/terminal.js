@@ -137,7 +137,30 @@ export function printReviewTerminalReport({
   if (summary.findingsBySource) {
     console.log(`ESLint findings: ${summary.findingsBySource.eslint || 0}`);
     console.log(`Complexity findings: ${summary.findingsBySource.complexity || 0}`);
-    console.log(`React findings: ${summary.findingsBySource.react || 0}\n`);
+    console.log(`React findings: ${summary.findingsBySource.react || 0}`);
+    if (summary.ai?.enabled || summary.findingsBySource.ai > 0) {
+      console.log(`AI findings: ${summary.findingsBySource.ai || 0}`);
+    }
+    console.log('');
+  }
+
+  if (summary.ai?.enabled) {
+    console.log('AI Review\n');
+    console.log('AI review: enabled');
+    if (summary.ai.model) {
+      console.log(`Model: ${summary.ai.model}`);
+    }
+    console.log(`AI chunks reviewed: ${summary.ai.chunksReviewed || 0}`);
+    console.log(`AI chunks skipped: ${summary.ai.chunksSkipped || 0}`);
+    if (summary.ai.estimatedCostUsd !== null && summary.ai.estimatedCostUsd !== undefined) {
+      console.log(`Estimated AI cost: $${summary.ai.estimatedCostUsd.toFixed(2)}`);
+    } else {
+      console.log('Estimated AI cost: unavailable for configured model');
+    }
+    if (summary.ai.stoppedByBudget) {
+      console.log(chalk.yellow('\n⚠ AI review was stopped early because configured budget limits were reached.'));
+    }
+    console.log('');
   }
 
   if (typeof summary.functionsAnalyzed === 'number') {

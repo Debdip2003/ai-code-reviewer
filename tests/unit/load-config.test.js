@@ -233,4 +233,60 @@ describe('loadConfig', () => {
     expect(DEFAULT_CONFIG.include).not.toContain('**/*.custom');
     expect(DEFAULT_CONFIG.exclude).not.toContain('custom/**');
   });
+
+  describe('AI configuration loading', () => {
+    it('should merge partial AI configuration while preserving defaults', async () => {
+      const userConfig = {
+        ai: {
+          enabled: true,
+          model: 'gpt-5.6-luna',
+          maxEstimatedCostUsd: 0.50
+        }
+      };
+      await fs.writeFile(
+        path.join(tempDir, CONFIG_FILE_NAME),
+        JSON.stringify(userConfig, null, 2)
+      );
+
+      const config = await loadConfig({ rootDirectory: tempDir });
+
+      expect(config.ai.enabled).toBe(true);
+      expect(config.ai.model).toBe('gpt-5.6-luna');
+      expect(config.ai.maxEstimatedCostUsd).toBe(0.50);
+      expect(config.ai.provider).toBe('openai');
+      expect(config.ai.reasoningEffort).toBe('low');
+      expect(config.ai.maxOutputTokens).toBe(2000);
+      expect(config.ai.maxRequests).toBe(20);
+      expect(config.ai.maxInputTokensPerChunk).toBe(12000);
+      expect(config.ai.timeoutMs).toBe(30000);
+      expect(config.ai.retries).toBe(2);
+    });
+
+    it('should reject invalid AI configuration values', async () => {
+      const invalidAiCases = [
+        { ai: { provider: 'anthropic' } }, // only openai allowed
+        { ai: { model: '' } }, // empty string
+        { ai: { reasoningEffort: 'extreme' } }, // invalid enum
+        { ai: { maxOutputTokens: 50 } }, // below 100
+        { ai: { maxOutputTokens: 30000 } }, // above 20000
+        { ai: { maxRequests: 0 } }, // below 1
+        { ai: { maxRequests: 200 } }, // above 100
+        { ai: { maxInputTokensPerChunk: 100 } }, // below 500
+        { ai: { maxEstimatedCostUsd: 0 } }, // must be > 0
+        { ai: { maxEstimatedCostUsd: 150 } }, // must be <= 100
+        { ai: { timeoutMs: 500 } }, // below 1000
+        { ai: { retries: 10 } }, // above 5
+        { ai: { unknownKey: true } } // unknown field
+      ];
+
+      for (const invalidCase of invalidAiCases) {
+        await fs.writeFile(
+          path.join(tempDir, CONFIG_FILE_NAME),
+          JSON.stringify(invalidCase, null, 2)
+        );
+
+        await expect(loadConfig({ rootDirectory: tempDir })).rejects.toThrow(ConfigurationError);
+      }
+    });
+  });
 });
