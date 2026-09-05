@@ -318,7 +318,19 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
       expect(result.stdout).toContain('Skipped: 1 limited');
     });
 
-    it('should fail with exit code 2 when --changed is passed', () => {
+    it('should fail with exit code 2 when --base is provided without --changed', () => {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--base', 'main'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(2);
+      const combinedOutput = result.stdout + result.stderr;
+      expect(combinedOutput).toContain('Option --base requires --changed to be specified');
+    });
+
+    it('should fail with exit code 2 when --changed is used in non-git directory', () => {
       const result = spawnSync(
         process.execPath,
         [cliPath, 'review', tempDir, '--changed'],
@@ -327,7 +339,85 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
 
       expect(result.status).toBe(2);
       const combinedOutput = result.stdout + result.stderr;
-      expect(combinedOutput).toContain('Git diff review (--changed) is not implemented yet');
+      expect(combinedOutput).toContain('not inside a Git repository');
+    });
+
+    it('should review only changed lines when --changed is used in a git repo', async () => {
+      // Initialize Git repo
+      spawnSync('git', ['init'], { cwd: tempDir });
+      spawnSync('git', ['config', 'user.name', 'Test'], { cwd: tempDir });
+      spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tempDir });
+
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      // File with preexisting issue on line 1
+      const initialCode = 'export function oldBad() { return a == b; }\nexport function clean() { return 1; }\n';
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), initialCode);
+      spawnSync('git', ['add', '.'], { cwd: tempDir });
+      spawnSync('git', ['commit', '-m', 'initial'], { cwd: tempDir });
+
+      // Add a clean change to line 2 (line 1 is NOT changed)
+      const updatedCode = 'export function oldBad() { return a == b; }\nexport function clean() { return 2; }\n';
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), updatedCode);
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--changed', '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.summary.scope.mode).toBe('changed');
+      expect(parsed.findings).toHaveLength(0); // line 1 eqeqeq finding filtered out because it was not changed
+    });
+
+    it('should reuse cached review results on second run', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'calc.js'),
+        'export function calc(a, b) { return a + b; }\n'
+      );
+
+      // Run 1: Cold cache (write)
+      const run1 = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+      expect(run1.status).toBe(0);
+      const parsed1 = JSON.parse(run1.stdout.trim());
+      expect(parsed1.summary.cache.writes).toBe(1);
+      expect(parsed1.summary.cache.hits).toBe(0);
+
+      // Run 2: Warm cache (hit)
+      const run2 = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+      expect(run2.status).toBe(0);
+      const parsed2 = JSON.parse(run2.stdout.trim());
+      expect(parsed2.summary.cache.hits).toBe(1);
+      expect(parsed2.summary.cache.writes).toBe(0);
+    });
+
+    it('should bypass cache when --no-cache is passed', async () => {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'calc.js'),
+        'export function calc(a, b) { return a + b; }\n'
+      );
+
+      const run = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir, '--no-cache', '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+      expect(run.status).toBe(0);
+      const parsed = JSON.parse(run.stdout.trim());
+      expect(parsed.summary.cache.enabled).toBe(false);
+      expect(parsed.summary.cache.hits).toBe(0);
+      expect(parsed.summary.cache.writes).toBe(0);
     });
 
     it('should fail with exit code 2 when invalid severity is supplied', () => {
@@ -351,6 +441,7 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
 
       const envWithoutKey = { ...process.env };
       delete envWithoutKey.OPENAI_API_KEY;
+      delete envWithoutKey.GROQ_API_KEY;
 
       const result = spawnSync(
         process.execPath,
@@ -376,6 +467,44 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
       expect(result.status).toBe(2);
       const combinedOutput = result.stdout + result.stderr;
       expect(combinedOutput).toContain('Option --max-ai-cost must be a positive number');
+    });
+  });
+
+  describe('cache command', () => {
+    it('should clear cache directory and output confirmation', async () => {
+      // First populate cache
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'src', 'clean.js'),
+        'export function add(a, b) { return a + b; }\n'
+      );
+
+      const reviewRun = spawnSync(
+        process.execPath,
+        [cliPath, 'review', tempDir],
+        { encoding: 'utf-8' }
+      );
+      expect(reviewRun.status).toBe(0);
+
+      // Now clear cache
+      const clearRun = spawnSync(
+        process.execPath,
+        [cliPath, 'cache', 'clear', tempDir],
+        { encoding: 'utf-8' }
+      );
+      expect(clearRun.status).toBe(0);
+      expect(clearRun.stdout).toContain('Cache cleared');
+
+      // Clear again (should say 0 items)
+      const clearAgainJson = spawnSync(
+        process.execPath,
+        [cliPath, 'cache', 'clear', tempDir, '--format', 'json'],
+        { encoding: 'utf-8' }
+      );
+      expect(clearAgainJson.status).toBe(0);
+      const parsed = JSON.parse(clearAgainJson.stdout.trim());
+      expect(parsed.status).toBe('cache-cleared');
+      expect(parsed.deletedCount).toBe(0);
     });
   });
 });

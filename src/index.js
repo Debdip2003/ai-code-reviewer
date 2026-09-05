@@ -7,8 +7,14 @@
 export { DEFAULT_CONFIG, CONFIG_FILE_NAME, IGNORE_FILE_NAME } from './config/defaults.js';
 export { loadConfig, ConfigurationError } from './config/load-config.js';
 
-// Scanner
+// Scanner & Git
 export { discoverFiles } from './scanner/discover-files.js';
+export {
+  findGitRoot,
+  getChangedFiles,
+  getChangedLineRanges,
+  GitDiffError
+} from './scanner/git-diff.js';
 
 // Parser & AST
 export { parseJavaScript, JavaScriptParseError } from './parser/parse-javascript.js';
@@ -20,7 +26,7 @@ export { analyzeWithEslint, EslintAnalysisError } from './analyzers/eslint-analy
 export { analyzeComplexity, ComplexityAnalysisError } from './analyzers/complexity-analyzer.js';
 export { analyzeReact, ReactAnalysisError } from './analyzers/react-analyzer.js';
 
-// Review Model & Utilities
+// Review Model, Scope & Utilities
 export { FindingSchema, FindingSeverity, validateFinding } from './review/finding.js';
 export {
   SEVERITY_ORDER,
@@ -31,7 +37,12 @@ export {
   sortFindings
 } from './review/severity.js';
 export { deduplicateFindings } from './review/deduplicate.js';
+export { filterFindingsByScope, findingIntersectsChangedLines } from './review/filter-by-scope.js';
 export { reviewRepository } from './review/review-engine.js';
+
+// Cache
+export { FileCache, CacheError } from './cache/file-cache.js';
+export { generateCacheKey } from './cache/cache-key.js';
 
 // AI Review Foundation
 export {

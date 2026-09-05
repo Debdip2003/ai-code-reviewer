@@ -8,6 +8,7 @@ import { createSemanticChunks } from './chunker.js';
 import { normalizeAIFindings } from './response-schema.js';
 import { deduplicateFindings } from '../review/deduplicate.js';
 import { sortFindings } from '../review/severity.js';
+import { findingIntersectsChangedLines } from '../review/filter-by-scope.js';
 
 /**
  * Concurrently processes an array of items with bounded concurrency.
@@ -49,6 +50,7 @@ async function mapConcurrent(items, concurrency, fn) {
  * @param {Object} params.config - Resolved reviewer configuration.
  * @param {import('./provider.js').AIProvider} params.provider - AI provider instance.
  * @param {import('./budget.js').AIBudgetManager} params.budget - Budget manager instance.
+ * @param {Array<{ start: number, end: number }>} [params.changedLines] - Optional changed line ranges for scope filtering.
  * @returns {Promise<{
  *   enabled: boolean,
  *   findings: Array<Object>,
@@ -63,7 +65,8 @@ export async function reviewWithAI({
   staticFindings = [],
   config = {},
   provider,
-  budget
+  budget,
+  changedLines
 }) {
   const aiConfig = config.ai || {};
 
@@ -106,9 +109,18 @@ export async function reviewWithAI({
     maxInputTokens: aiConfig.maxInputTokensPerChunk || 12000
   });
 
+  const hasScopeFilter = Array.isArray(changedLines) && changedLines.length > 0;
+  const eligibleChunks = hasScopeFilter
+    ? chunks.filter((chunk) =>
+        changedLines.some(
+          (range) => chunk.lineStart <= range.end && chunk.lineEnd >= range.start
+        )
+      )
+    : chunks;
+
   const totalCreated = chunks.length + skipped.length;
   let reviewedCount = 0;
-  let skippedCount = skipped.length;
+  let skippedCount = skipped.length + (chunks.length - eligibleChunks.length);
 
   const rawAIFindings = [];
   const chunkFailures = [];
@@ -116,7 +128,7 @@ export async function reviewWithAI({
   const concurrency = Math.min(config.concurrency || 2, 5);
 
   // 3. Process each eligible chunk concurrently with bounded concurrency
-  await mapConcurrent(chunks, concurrency, async (chunk) => {
+  await mapConcurrent(eligibleChunks, concurrency, async (chunk) => {
     // Check budget before calling provider
     const budgetCheck = budget
       ? budget.canAttemptRequest({
@@ -143,7 +155,8 @@ export async function reviewWithAI({
         model: aiConfig.model,
         reasoningEffort: aiConfig.reasoningEffort,
         maxOutputTokens: aiConfig.maxOutputTokens,
-        retries: aiConfig.retries
+        retries: aiConfig.retries,
+        changedLines
       });
 
       if (budget) {
@@ -158,7 +171,13 @@ export async function reviewWithAI({
           chunkLineStart: chunk.lineStart,
           chunkLineEnd: chunk.lineEnd
         });
-        rawAIFindings.push(...normalized);
+
+        // If changed scope is active, filter AI findings to intersecting lines
+        const scoped = hasScopeFilter
+          ? normalized.filter((f) => findingIntersectsChangedLines(f, changedLines))
+          : normalized;
+
+        rawAIFindings.push(...scoped);
       }
     } catch (err) {
       // Chunk failure does not erase findings from other chunks

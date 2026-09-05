@@ -144,6 +144,41 @@ export function printReviewTerminalReport({
     console.log('');
   }
 
+  if (summary.scope) {
+    console.log('Review Scope\n');
+    console.log(`Scope mode: ${summary.scope.mode}`);
+    if (summary.scope.mode === 'changed') {
+      console.log(`Git mode: ${summary.scope.gitMode || 'working-tree'}`);
+      if (summary.scope.baseRef) {
+        console.log(`Base reference: ${summary.scope.baseRef}`);
+      }
+      console.log(`Changed files: ${summary.scope.changedFiles ?? 0}`);
+      console.log(`Eligible changed files: ${summary.scope.eligibleFiles ?? 0}`);
+      if (summary.scope.deletedFiles > 0) {
+        console.log(`Deleted files: ${summary.scope.deletedFiles}`);
+      }
+    }
+    console.log('');
+  }
+
+  if (summary.cache) {
+    console.log('Cache\n');
+    console.log(`Cache: ${summary.cache.enabled ? 'enabled' : 'disabled'}`);
+    if (summary.cache.directory) {
+      console.log(`Cache directory: ${summary.cache.directory}`);
+    }
+    console.log(`Cache hits: ${summary.cache.hits || 0}`);
+    console.log(`Cache misses: ${summary.cache.misses || 0}`);
+    console.log(`Cache writes: ${summary.cache.writes || 0}`);
+    if (summary.cache.evictions > 0) {
+      console.log(`Cache evictions: ${summary.cache.evictions}`);
+    }
+    if (summary.cache.invalidEntries > 0) {
+      console.log(`Invalid cache entries: ${summary.cache.invalidEntries}`);
+    }
+    console.log('');
+  }
+
   if (summary.ai?.enabled) {
     console.log('AI Review\n');
     console.log('AI review: enabled');

@@ -177,6 +177,30 @@ export const aiConfigSchema = z
   .strict();
 
 /**
+ * Zod schema for cache configuration.
+ */
+export const cacheConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    directory: z
+      .string()
+      .min(1, 'Cache directory cannot be empty string')
+      .refine((dir) => !path.isAbsolute(dir), 'Cache directory must be a relative path')
+      .refine(
+        (dir) => !dir.split(/[/\\]/).includes('..'),
+        'Cache directory cannot contain directory traversal (..)'
+      )
+      .optional(),
+    maxEntries: z
+      .number()
+      .int('maxEntries must be an integer')
+      .min(10, 'maxEntries must be at least 10')
+      .max(10000, 'maxEntries cannot exceed 10000')
+      .optional()
+  })
+  .strict();
+
+/**
  * Zod schema for analyzers configuration group.
  */
 export const analyzersConfigSchema = z
@@ -229,7 +253,8 @@ export const userConfigSchema = z
       .max(500000, 'maxFileSizeKb cannot exceed 500000')
       .optional(),
     analyzers: analyzersConfigSchema.optional(),
-    ai: aiConfigSchema.optional()
+    ai: aiConfigSchema.optional(),
+    cache: cacheConfigSchema.optional()
   })
   .strict();
 
@@ -394,6 +419,16 @@ export async function loadConfig(options = {}) {
     retries: cliAi.retries ?? fileAi.retries ?? defaultAi.retries
   };
 
+  const defaultCache = DEFAULT_CONFIG.cache;
+  const fileCache = fileConfig.cache || {};
+  const cliCache = cleanCliOverrides.cache || {};
+
+  const mergedCache = {
+    enabled: cliCache.enabled ?? fileCache.enabled ?? defaultCache.enabled,
+    directory: cliCache.directory ?? fileCache.directory ?? defaultCache.directory,
+    maxEntries: cliCache.maxEntries ?? fileCache.maxEntries ?? defaultCache.maxEntries
+  };
+
   return {
     include: [...mergedInclude],
     exclude: [...mergedExclude],
@@ -407,6 +442,7 @@ export async function loadConfig(options = {}) {
       react: mergedReact
     },
     ai: mergedAi,
+    cache: mergedCache,
     rootDirectory
   };
 }

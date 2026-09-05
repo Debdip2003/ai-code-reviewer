@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { Command } from 'commander';
 import { registerReviewCommand } from '../src/cli/commands/review.js';
 import { registerInitCommand } from '../src/cli/commands/init.js';
+import { registerCacheCommand } from '../src/cli/commands/cache.js';
 import { printError } from '../src/cli/output/terminal.js';
 
 try {
@@ -23,6 +24,7 @@ try {
 
   registerReviewCommand(program);
   registerInitCommand(program);
+  registerCacheCommand(program);
 
   await program.parseAsync(process.argv);
 } catch (error) {

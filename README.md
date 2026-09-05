@@ -15,10 +15,12 @@ Configuration
 → ESLint and React Hooks rules
 → Complexity analysis
 → Custom React AST analysis
-→ Semantic code chunking
+→ Semantic code chunking (filtered by changed lines)
 → Token and budget checks
 → Provider abstraction & OpenAI Responses API (Structured Outputs)
 → Finding normalization & confidence filtering (≥ 0.65)
+→ Scope-based finding filtering (changed lines)
+→ Store sanitized results in local cache
 → Deduplication & severity filtering
 → Terminal or JSON report
 ```
@@ -29,13 +31,15 @@ Configuration
 * **React Hooks Rules Active:** Enforces official React Hooks rules (`react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`) via isolated flat configuration.
 * **Custom React AST Analysis Active:** Detects oversized components, direct state mutations, async `useEffect` callbacks, oversized effect callbacks, and array-index keys.
 * **AST Complexity Analysis Active:** Evaluates function line length, parameter count, cyclomatic complexity, and control-flow decision nesting depth using AST inspection.
-* **AI Code Review (Responses API Structured Outputs):** Inspects semantic units for subtle logic bugs, race conditions, edge cases, security risks, and unhandled promise rejections using OpenAI models.
-* **Bring-Your-Own-Key (BYOK):** AI review uses your own OpenAI API key via the standard `OPENAI_API_KEY` environment variable. API keys are never stored in config files or passed via CLI args.
+* **Git-Aware Changed-File Review (`--changed`, `--base <ref>`):** Read-only Git operations to review only modified, staged, added, or branched files and lines.
+* **Changed-Line Finding & Chunk Filtering:** Restricts deterministic findings and AI chunks to modified line hunks while preserving full function AST context.
+* **Content-Addressed Local Cache:** Deterministic SHA-256 caching of normalized findings, metrics, and AST summaries with zero source code or API key persistence.
+* **AI Code Review (Responses API Structured Outputs):** Inspects semantic units for subtle logic bugs, race conditions, edge cases, security risks, and unhandled promise rejections using OpenAI or Groq models.
+* **Bring-Your-Own-Key (BYOK):** AI review uses your own API key via `OPENAI_API_KEY` (or `GROQ_API_KEY`). API keys are never stored in config files or passed via CLI args.
 * **Semantic AST Chunking & Budget Safeguards:** Chunks top-level functions, classes, and components with conservative token estimation (`Math.ceil(length / 3)`). Enforces request limits, per-chunk token limits, and USD cost ceilings.
 * **Prompt Injection Defense:** Untrusted repository code, comments, and identifiers are strictly quarantined within `<untrusted_code>` delimiters with explicit instructions preventing model subversion.
 * **Isolated Configuration:** Operates with a controlled internal flat configuration; the target repository's `.eslintrc` or `eslint.config.js` is **never loaded**.
-* **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** source files.
-* **Git Diff Analysis:** Differential review via `--changed` is reserved for a future release.
+* **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** repository files or Git state.
 
 ## Supported File Extensions
 
@@ -110,6 +114,12 @@ ai-code-reviewer init --force
 # Review current repository with deterministic analyzers (AI disabled by default)
 ai-code-reviewer review .
 
+# Review only git-changed files in the working tree (staged, unstaged, untracked)
+ai-code-reviewer review . --changed
+
+# Review changes against a base branch or commit reference
+ai-code-reviewer review . --changed --base main
+
 # Enable AI code review using default model (gpt-5.6-luna)
 ai-code-reviewer review . --ai
 
@@ -122,6 +132,9 @@ ai-code-reviewer review . --ai --max-ai-cost 0.10
 # Explicitly disable AI review (overriding configuration file)
 ai-code-reviewer review . --no-ai
 
+# Explicitly disable local caching (overriding configuration file)
+ai-code-reviewer review . --no-cache
+
 # Review a specific subdirectory with high severity threshold
 ai-code-reviewer review ./src --severity high
 
@@ -132,11 +145,24 @@ ai-code-reviewer review . --format json
 ai-code-reviewer review ./src --max-files 25
 ```
 
+### Cache Management
+
+```bash
+# Clear all cached review results for the current project
+ai-code-reviewer cache clear
+
+# Clear cache for a specific project directory
+ai-code-reviewer cache clear ./path/to/project
+
+# Clear cache and emit JSON status
+ai-code-reviewer cache clear . --format json
+```
+
 ## Exit Codes
 
 * **`0`**: Analysis completed successfully and no finding met or exceeded the configured severity threshold.
 * **`1`**: Review threshold triggered (at least one finding met or exceeded the severity threshold).
-* **`2`**: Configuration, file scanning, reading, Babel parsing, analyzer failure, missing API key (when AI is enabled), or AI budget limit reached.
+* **`2`**: Configuration, Git execution, file scanning, reading, Babel parsing, analyzer failure, missing API key (when AI is enabled), or AI budget limit reached.
 
 ## Analyzers & Rules
 
@@ -193,6 +219,7 @@ ai-code-reviewer review ./src --max-files 25
     ".next/**",
     "public/**",
     "vendor/**",
+    ".ai-code-reviewer-cache/**",
     "**/*.min.js"
   ],
   "outputFormat": "terminal",
@@ -216,6 +243,11 @@ ai-code-reviewer review ./src --max-files 25
       "detectDirectStateMutation": true,
       "detectArrayIndexKeys": true
     }
+  },
+  "cache": {
+    "enabled": true,
+    "directory": ".ai-code-reviewer-cache",
+    "maxEntries": 1000
   },
   "ai": {
     "enabled": false,
@@ -293,6 +325,23 @@ Model pricing is versioned and informational:
     "ignored": 0,
     "tooLarge": 0,
     "limited": 0,
+    "scope": {
+      "mode": "full",
+      "gitMode": null,
+      "baseRef": null,
+      "changedFiles": null,
+      "eligibleFiles": 1,
+      "deletedFiles": 0
+    },
+    "cache": {
+      "enabled": true,
+      "hits": 0,
+      "misses": 1,
+      "writes": 1,
+      "evictions": 0,
+      "invalidEntries": 0,
+      "directory": "/path/to/project/.ai-code-reviewer-cache"
+    },
     "ai": {
       "enabled": true,
       "model": "gpt-5.6-luna",
@@ -300,6 +349,7 @@ Model pricing is versioned and informational:
       "chunksReviewed": 2,
       "chunksSkipped": 0,
       "requests": 2,
+      "cacheHits": 0,
       "estimatedCostUsd": 0.00045,
       "stoppedByBudget": false
     }
@@ -313,6 +363,11 @@ Model pricing is versioned and informational:
 import {
   loadConfig,
   discoverFiles,
+  getChangedFiles,
+  getChangedLineRanges,
+  filterFindingsByScope,
+  FileCache,
+  generateCacheKey,
   parseJavaScript,
   analyzeWithEslint,
   analyzeComplexity,
@@ -323,15 +378,21 @@ import {
   reviewRepository
 } from 'ai-code-reviewer';
 
-// Run complete repository review with AI
+// Run review in git-changed mode
+const changedInfo = await getChangedFiles({ rootDirectory: process.cwd() });
 const result = await reviewRepository({
   rootDirectory: process.cwd(),
-  config: {
-    ai: { enabled: true, model: 'gpt-5.6-luna' }
+  reviewScope: {
+    mode: 'changed',
+    gitMode: changedInfo.mode,
+    files: changedInfo.files.reduce((acc, f) => {
+      acc[f.relativePath] = { status: f.status, changedLines: [] };
+      return acc;
+    }, {})
   }
 });
 
-console.log(`Analyzed ${result.summary.discovered} files with ${result.findings.length} findings.`);
+console.log(`Analyzed ${result.summary.analyzed} changed files with ${result.findings.length} findings.`);
 ```
 
 ## License

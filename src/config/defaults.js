@@ -43,6 +43,13 @@
  */
 
 /**
+ * @typedef {Object} CacheConfig
+ * @property {boolean} enabled - Whether local result caching is active.
+ * @property {string} directory - Relative directory path for storing cache files.
+ * @property {number} maxEntries - Maximum number of cache entries to retain.
+ */
+
+/**
  * @typedef {Object} ReviewerConfig
  * @property {readonly string[]} include - Glob patterns for files to include in the review.
  * @property {readonly string[]} exclude - Glob patterns for files and directories to exclude from the review.
@@ -53,6 +60,7 @@
  * @property {number} maxFileSizeKb - Maximum size in kilobytes for a single file to be analyzed.
  * @property {AnalyzersConfig} analyzers - Analyzer-specific configuration settings.
  * @property {AIConfig} ai - AI review configuration settings.
+ * @property {CacheConfig} cache - Cache configuration settings.
  */
 
 /**
@@ -74,6 +82,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     '.next/**',
     'public/**',
     'vendor/**',
+    '.ai-code-reviewer-cache/**',
     '**/*.min.js'
   ]),
   outputFormat: 'terminal',
@@ -109,6 +118,11 @@ export const DEFAULT_CONFIG = Object.freeze({
     maxEstimatedCostUsd: 0.25,
     timeoutMs: 30000,
     retries: 2
+  }),
+  cache: Object.freeze({
+    enabled: true,
+    directory: '.ai-code-reviewer-cache',
+    maxEntries: 1000
   })
 });
 

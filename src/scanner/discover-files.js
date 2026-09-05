@@ -80,14 +80,28 @@ export async function discoverFiles(options = {}) {
     excludePatterns
   });
 
-  // 3. Discover candidates using fast-glob
-  const entries = await fg(includePatterns, {
-    cwd: resolvedRoot,
-    dot: true,
-    onlyFiles: true,
-    followSymbolicLinks: false,
-    unique: true
-  });
+  const allowedSet = options.allowedRelativePaths
+    ? new Set(
+        (Array.isArray(options.allowedRelativePaths)
+          ? options.allowedRelativePaths
+          : Array.from(options.allowedRelativePaths)
+        ).map((p) => normalizeRelativePath(p))
+      )
+    : null;
+
+  // 3. Discover candidates using fast-glob (or allowed set)
+  let entries = [];
+  if (allowedSet) {
+    entries = Array.from(allowedSet);
+  } else {
+    entries = await fg(includePatterns, {
+      cwd: resolvedRoot,
+      dot: true,
+      onlyFiles: true,
+      followSymbolicLinks: false,
+      unique: true
+    });
+  }
 
   const skipped = {
     ignored: 0,

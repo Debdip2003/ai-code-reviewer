@@ -76,7 +76,7 @@ function sanitizeMeta(text) {
  * @param {Array<Object>} [params.staticFindings=[]] - Existing deterministic findings for this file/chunk.
  * @returns {{ system: string, user: string }} Formatted system and user prompt strings.
  */
-export function buildReviewPrompt({ chunk, staticFindings = [] }) {
+export function buildReviewPrompt({ chunk, staticFindings = [], changedLines }) {
   if (!chunk || typeof chunk !== 'object') {
     throw new TypeError('chunk must be an object');
   }
@@ -112,13 +112,23 @@ export function buildReviewPrompt({ chunk, staticFindings = [] }) {
         .join('\n')
     : 'None';
 
+  const changedScopeText =
+    Array.isArray(changedLines) && changedLines.length > 0
+      ? `\n- Changed Line Ranges in Scope: ${changedLines.map((r) => `${r.start} to ${r.end}`).join(', ')}`
+      : '';
+
+  const changedScopeInstruction =
+    Array.isArray(changedLines) && changedLines.length > 0
+      ? '\n- Focus exclusively on issues caused by, directly introduced by, or intersecting the changed lines.'
+      : '';
+
   const userMessage = `Review the following JavaScript/React code chunk.
 
 Context Metadata:
 - File: ${relativePath}
 - Unit Kind: ${kind}
 - Symbol: ${symbolName}
-- Line Range: ${lineStart} to ${lineEnd} (Absolute source file line numbers)
+- Line Range: ${lineStart} to ${lineEnd} (Absolute source file line numbers)${changedScopeText}
 
 File Imports:
 ${importsList}
@@ -132,7 +142,7 @@ ${code}
 </untrusted_code>
 
 Remember:
-- Only report findings with lines within [${lineStart}, ${lineEnd}].
+- Only report findings with lines within [${lineStart}, ${lineEnd}].${changedScopeInstruction}
 - Assign confidence from 0.0 to 1.0. Findings with confidence below 0.65 will be dropped.
 - Return empty findings array if no significant issue is found.`;
 

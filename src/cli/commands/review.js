@@ -6,6 +6,7 @@
 import { loadConfig } from '../../config/load-config.js';
 import { reviewRepository } from '../../review/review-engine.js';
 import { isAtOrAboveSeverity, SEVERITY_ORDER } from '../../review/severity.js';
+import { getChangedFiles, getChangedLineRanges, GitDiffError } from '../../scanner/git-diff.js';
 import { printReviewTerminalReport, printError } from '../output/terminal.js';
 import { formatReviewReportJson } from '../output/json.js';
 
@@ -17,13 +18,18 @@ import { formatReviewReportJson } from '../output/json.js';
  * @param {'terminal' | 'json'} [options.format] - Output format override.
  * @param {string | number} [options.maxFiles] - Maximum files override.
  * @param {'low' | 'medium' | 'high' | 'critical'} [options.severity] - Minimum severity threshold override.
+ * @param {boolean} [options.ai] - AI review flag.
+ * @param {string} [options.model] - AI model override.
+ * @param {string | number} [options.maxAiCost] - Max estimated AI cost override.
  * @param {boolean} [options.changed=false] - Whether to review only changed files.
+ * @param {string} [options.base] - Base Git reference for comparative review.
+ * @param {boolean} [options.cache] - Whether cache is enabled.
  * @returns {Promise<void>}
  */
 export async function reviewAction(targetPath = '.', options = {}) {
-  // Check for unsupported changed-only review mode
-  if (options.changed) {
-    printError('Git diff review (--changed) is not implemented yet in this version.');
+  // Validate --base requires --changed
+  if (options.base && !options.changed) {
+    printError('Option --base requires --changed to be specified.');
     process.exitCode = 2;
     return;
   }
@@ -95,6 +101,10 @@ export async function reviewAction(targetPath = '.', options = {}) {
     cliOverrides.ai = cliOverrides.ai || {};
     cliOverrides.ai.maxEstimatedCostUsd = parsedMaxAiCost;
   }
+  if (options.cache !== undefined) {
+    cliOverrides.cache = cliOverrides.cache || {};
+    cliOverrides.cache.enabled = Boolean(options.cache);
+  }
 
   try {
     const config = await loadConfig({
@@ -111,9 +121,56 @@ export async function reviewAction(targetPath = '.', options = {}) {
       }
     }
 
+    let reviewScope = null;
+    if (options.changed) {
+      try {
+        const changedInfo = await getChangedFiles({
+          rootDirectory: targetPath,
+          baseRef: options.base
+        });
+
+        const filesMap = {};
+        let deletedFiles = 0;
+
+        for (const f of changedInfo.files) {
+          if (f.status === 'deleted') {
+            deletedFiles++;
+            continue;
+          }
+
+          const changedLines = await getChangedLineRanges({
+            rootDirectory: targetPath,
+            relativePath: f.relativePath,
+            baseRef: options.base,
+            status: f.status
+          });
+
+          filesMap[f.relativePath] = {
+            status: f.status,
+            changedLines
+          };
+        }
+
+        reviewScope = {
+          mode: 'changed',
+          gitMode: changedInfo.mode,
+          baseRef: changedInfo.baseRef,
+          changedFiles: changedInfo.files.length - deletedFiles,
+          deletedFiles,
+          files: filesMap
+        };
+      } catch (gitErr) {
+        const gitMsg = gitErr instanceof GitDiffError ? gitErr.message : `Git error: ${gitErr.message}`;
+        printError(gitMsg);
+        process.exitCode = 2;
+        return;
+      }
+    }
+
     const reviewResult = await reviewRepository({
       rootDirectory: targetPath,
-      config
+      config,
+      reviewScope
     });
 
     const threshold = config.severityThreshold || 'medium';
@@ -182,6 +239,9 @@ export function registerReviewCommand(program) {
     .option('--model <model>', 'AI model identifier (e.g. gpt-5.6-luna)')
     .option('--max-ai-cost <usd>', 'Maximum allowable estimated AI cost in USD')
     .option('--changed', 'Review only git-changed files', false)
+    .option('--base <ref>', 'Base git reference for diff comparison (requires --changed)')
+    .option('--cache', 'Enable local caching')
+    .option('--no-cache', 'Disable local caching')
     .action(async (targetPath, options) => {
       await reviewAction(targetPath, options);
     });

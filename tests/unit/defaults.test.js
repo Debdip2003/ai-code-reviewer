@@ -22,6 +22,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
         '.next/**',
         'public/**',
         'vendor/**',
+        '.ai-code-reviewer-cache/**',
         '**/*.min.js'
       ],
       outputFormat: 'terminal',
@@ -57,6 +58,11 @@ describe('DEFAULT_CONFIG and Constants', () => {
         maxEstimatedCostUsd: 0.25,
         timeoutMs: 30000,
         retries: 2
+      },
+      cache: {
+        enabled: true,
+        directory: '.ai-code-reviewer-cache',
+        maxEntries: 1000
       }
     });
   });
@@ -69,6 +75,7 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.complexity)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.react)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.ai)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.cache)).toBe(true);
 
     expect(() => {
       // @ts-expect-error - testing immutability
@@ -83,6 +90,11 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(() => {
       // @ts-expect-error - testing immutability
       DEFAULT_CONFIG.ai.enabled = true;
+    }).toThrow();
+
+    expect(() => {
+      // @ts-expect-error - testing immutability
+      DEFAULT_CONFIG.cache.enabled = false;
     }).toThrow();
   });
 });
