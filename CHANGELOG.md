@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-09-06
 
 ### Added
-- **Product Rebranding**: Rebranded product and CLI executable to `acr` under scoped package `@code/acr`.
+- **Product Rebranding**: Rebranded product and CLI executable to `acr` under scoped package `@debdipbhat/acr`.
 - **Diagnostics**: Added `acr doctor [path]` command performing environment, Node.js, toolchain, configuration, and security readiness checks.
 - **Graceful Cancellation**: Support for `AbortController` and `SIGINT`/`SIGTERM` signal propagation across AST parsing, Git operations, AI API calls, and review workflows with standard exit code `130`.
 - **Centralized Exit Codes**:

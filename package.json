@@ -1,5 +1,5 @@
 {
-  "name": "@code/acr",
+  "name": "@debdipbhat/acr",
   "version": "0.1.0",
   "description": "Production-quality, terminal-first JavaScript and React code reviewer powered by static analysis and AI.",
   "type": "module",

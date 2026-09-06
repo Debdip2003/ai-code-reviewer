@@ -52,49 +52,83 @@ Configuration & Diagnostics
 ### Add to an Existing Project
 
 ```bash
-npm install --save-dev @code/acr
+npm install --save-dev @debdipbhat/acr
 ```
 
 ### One-Time Execution via npx
 
 ```bash
-npx @code/acr review .
+npx @debdipbhat/acr review .
 ```
 
 ### Run Diagnostics
 
 ```bash
-npx @code/acr doctor
+npx @debdipbhat/acr doctor
 ```
 
 ### CI / Automation Execution
 
 ```bash
-npx @code/acr review . --format json --severity high
+npx @debdipbhat/acr review . --format json --severity high
 ```
 
 ## AI Review & Environment Setup
 
-AI review is **disabled by default**. To activate AI assistance, provide your OpenAI API key and pass `--ai` or enable it in `.acrrc.json`.
+AI review is **disabled by default**. To activate AI assistance, provide your **Groq** or **OpenAI** API key and pass `--ai` or enable it in `.acrrc.json`.
 
-### Setting `OPENAI_API_KEY`
+ACR supports both **Groq** and **OpenAI** providers (via Bring-Your-Own-Key).
+
+### Setting `GROQ_API_KEY` (Recommended for Groq)
 
 #### PowerShell (Windows)
 
 ```powershell
-$env:OPENAI_API_KEY="your-key"
+$env:GROQ_API_KEY="gsk_your-groq-key"
 ```
 
 #### Command Prompt (Windows)
 
 ```cmd
-set OPENAI_API_KEY=your-key
+set GROQ_API_KEY=gsk_your-groq-key
 ```
 
 #### macOS & Linux (Bash / Zsh)
 
 ```bash
-export OPENAI_API_KEY="your-key"
+export GROQ_API_KEY="gsk_your-groq-key"
+```
+
+### Setting `OPENAI_API_KEY` (for OpenAI)
+
+#### PowerShell (Windows)
+
+```powershell
+$env:OPENAI_API_KEY="your-openai-key"
+```
+
+#### Command Prompt (Windows)
+
+```cmd
+set OPENAI_API_KEY=your-openai-key
+```
+
+#### macOS & Linux (Bash / Zsh)
+
+```bash
+export OPENAI_API_KEY="your-openai-key"
+```
+
+### Local `.env` File Support
+
+You can also place your API keys in a local `.env` file in your repository root:
+
+```env
+# Groq API Key
+GROQ_API_KEY=gsk_your-groq-key
+
+# Or OpenAI API Key
+OPENAI_API_KEY=your-openai-key
 ```
 
 > **Security Note:** Never commit API keys or `.env` files to version control. API keys are never accepted as command-line arguments to prevent shell history exposure.
@@ -408,7 +442,7 @@ import {
   reviewRepository,
   runDoctorChecks,
   EXIT_CODES
-} from '@code/acr';
+} from '@debdipbhat/acr';
 
 // Run review in git-changed mode
 const changedInfo = await getChangedFiles({ rootDirectory: process.cwd() });

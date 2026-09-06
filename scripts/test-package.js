@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Packed tarball consumer smoke test for ACR (@code/acr).
+ * Packed tarball consumer smoke test for ACR (@debdipbhat/acr).
  * Packs the project into a tarball, installs it into an isolated temporary workspace,
  * verifies CLI execution and programmatic ESM imports, and cleans up artifacts.
  */
@@ -57,7 +57,7 @@ async function run() {
     console.log('Step 4: Testing programmatic ESM exports...');
     const nodeCmd = process.execPath;
     const testImportScript = `
-      import { reviewRepository, EXIT_CODES, runDoctorChecks } from '@code/acr';
+      import { reviewRepository, EXIT_CODES, runDoctorChecks } from '@debdipbhat/acr';
       if (typeof reviewRepository !== 'function') throw new Error('reviewRepository is not a function');
       if (typeof runDoctorChecks !== 'function') throw new Error('runDoctorChecks is not a function');
       if (EXIT_CODES.SUCCESS !== 0) throw new Error('EXIT_CODES invalid');

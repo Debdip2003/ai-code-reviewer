@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Pre-release validation script for ACR (@code/acr).
+ * Pre-release validation script for ACR (@debdipbhat/acr).
  * Validates package metadata, file manifests, binary configurations, and release readiness.
  */
 
@@ -34,15 +34,15 @@ try {
 }
 
 // 2. Name check
-if (pkg.name === '@code/acr') {
+if (pkg.name === '@debdipbhat/acr') {
   pass('Package name', pkg.name);
 } else {
-  fail('Package name', `Expected "@code/acr", found "${pkg.name}"`);
+  fail('Package name', `Expected "@debdipbhat/acr", found "${pkg.name}"`);
 }
 
 // 3. Bin mapping
-if (pkg.bin && pkg.bin.acr === './bin/cli.js') {
-  pass('Bin mapping', 'acr -> ./bin/cli.js');
+if (pkg.bin && (pkg.bin.acr === './bin/cli.js' || pkg.bin.acr === 'bin/cli.js')) {
+  pass('Bin mapping', `acr -> ${pkg.bin.acr}`);
 } else {
   fail('Bin mapping', `Expected { acr: "./bin/cli.js" }, found ${JSON.stringify(pkg.bin)}`);
 }
