@@ -139,21 +139,105 @@ describe('discoverFiles', () => {
     }
   });
 
-  it('should not follow symbolic links', async () => {
+  it('should not follow symbolic files', async () => {
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-reviewer-ext-'));
+    try {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
+      await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
+
+      let symlinkCreated = false;
+      try {
+        await fs.symlink(
+          path.join(outsideDir, 'ext.js'),
+          path.join(tempDir, 'src', 'symlink.js'),
+          'file'
+        );
+        symlinkCreated = true;
+      } catch {
+        // On Windows without Developer Mode, file symlinks require elevated permissions
+      }
+
+      if (symlinkCreated) {
+        const result = await discoverFiles({ rootDirectory: tempDir });
+        expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+      }
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should not follow symbolic directories or directory junctions', async () => {
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-reviewer-ext-dir-'));
+    try {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
+      await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
+
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      await fs.symlink(outsideDir, path.join(tempDir, 'linked-external'), linkType);
+
+      const result = await discoverFiles({ rootDirectory: tempDir });
+      expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should not follow symbolic directories or files when specified in allowedRelativePaths', async () => {
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-reviewer-ext-allowed-'));
+    try {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
+      await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
+
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      await fs.symlink(outsideDir, path.join(tempDir, 'linked-external'), linkType);
+
+      const result = await discoverFiles({
+        rootDirectory: tempDir,
+        allowedRelativePaths: ['linked-external/ext.js', 'src/app.js']
+      });
+
+      expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should handle broken symbolic links gracefully without failing', async () => {
     await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
-    await fs.mkdir(path.join(tempDir, 'external'), { recursive: true });
-
     await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
-    await fs.writeFile(path.join(tempDir, 'external', 'ext.js'), '// ext');
 
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
     try {
       await fs.symlink(
-        path.join(tempDir, 'external', 'ext.js'),
-        path.join(tempDir, 'src', 'symlink.js')
+        path.join(tempDir, 'nonexistent-target'),
+        path.join(tempDir, 'broken-link'),
+        linkType
       );
     } catch {
-      // On some Windows environments symlinks require admin rights; skip symlink assertion if creation fails
-      return;
+      // Ignore creation error if not supported
+    }
+
+    const result = await discoverFiles({ rootDirectory: tempDir });
+    expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+  });
+
+  it('should avoid infinite recursion on circular directory links', async () => {
+    await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
+
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+    try {
+      await fs.symlink(
+        path.join(tempDir, 'src'),
+        path.join(tempDir, 'src', 'loop'),
+        linkType
+      );
+    } catch {
+      // Ignore if circular symlink creation is restricted
     }
 
     const result = await discoverFiles({ rootDirectory: tempDir });

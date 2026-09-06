@@ -11,6 +11,62 @@ import { DEFAULT_CONFIG } from '../config/defaults.js';
 import { createIgnoreMatcher, normalizeRelativePath } from './ignore-files.js';
 
 /**
+ * Verifies that a relative path within rootDirectory contains no symbolic links,
+ * junctions, or non-regular intermediate directories/files.
+ *
+ * @param {string} rootDirectory - Root directory path.
+ * @param {string} relativePath - Normalized relative path with forward slashes.
+ * @param {Map<string, boolean>} [dirSymlinkCache] - Cache of verified directory paths.
+ * @returns {Promise<{ isRegularFile: boolean, sizeBytes: number } | null>}
+ */
+async function verifyRegularFileNoSymlinks(rootDirectory, relativePath, dirSymlinkCache = new Map()) {
+  const segments = relativePath.split('/');
+  let currentPath = rootDirectory;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (!segment || segment === '.') continue;
+    if (segment === '..') return null;
+
+    currentPath = path.join(currentPath, segment);
+    const isLeaf = i === segments.length - 1;
+
+    if (!isLeaf && dirSymlinkCache.has(currentPath)) {
+      if (dirSymlinkCache.get(currentPath) === true) {
+        return null;
+      }
+      continue;
+    }
+
+    try {
+      const stat = await fs.lstat(currentPath);
+      if (stat.isSymbolicLink()) {
+        if (!isLeaf) dirSymlinkCache.set(currentPath, true);
+        return null;
+      }
+
+      if (!isLeaf) {
+        if (!stat.isDirectory()) {
+          dirSymlinkCache.set(currentPath, true);
+          return null;
+        }
+        dirSymlinkCache.set(currentPath, false);
+      } else {
+        if (!stat.isFile()) {
+          return null;
+        }
+        return { isRegularFile: true, sizeBytes: stat.size };
+      }
+    } catch {
+      if (!isLeaf) dirSymlinkCache.set(currentPath, true);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Discovers source files eligible for code review within a given root directory.
  *
  * @param {Object} [options={}]
@@ -30,9 +86,48 @@ export async function discoverFiles(options = {}) {
   const rootDirectory = options.rootDirectory || process.cwd();
   const resolvedRoot = path.resolve(rootDirectory);
 
+  const maxFileSizeKb = options.maxFileSizeKb !== undefined
+    ? options.maxFileSizeKb
+    : DEFAULT_CONFIG.maxFileSizeKb;
+
+  const maxSizeBytes = maxFileSizeKb * 1024;
+
   // 1. Validate root directory or single file
-  const rootStat = await fs.stat(resolvedRoot);
-  if (rootStat.isFile()) {
+  let rootLstat;
+  try {
+    rootLstat = await fs.lstat(resolvedRoot);
+  } catch (err) {
+    throw new Error(`The specified path is not a directory or file: "${resolvedRoot}"`, { cause: err });
+  }
+
+  if (rootLstat.isSymbolicLink()) {
+    let isDir = false;
+    try {
+      const stat = await fs.stat(resolvedRoot);
+      isDir = stat.isDirectory();
+    } catch {
+      isDir = false;
+    }
+
+    if (!isDir) {
+      return {
+        rootDirectory: path.dirname(resolvedRoot),
+        files: [],
+        skipped: { ignored: 0, tooLarge: 0, limited: 0 },
+        ignoreSources: []
+      };
+    }
+  }
+
+  if (rootLstat.isFile()) {
+    if (rootLstat.size > maxSizeBytes) {
+      return {
+        rootDirectory: path.dirname(resolvedRoot),
+        files: [],
+        skipped: { ignored: 0, tooLarge: 1, limited: 0 },
+        ignoreSources: []
+      };
+    }
     return {
       rootDirectory: path.dirname(resolvedRoot),
       files: [
@@ -40,7 +135,7 @@ export async function discoverFiles(options = {}) {
           absolutePath: resolvedRoot,
           relativePath: path.basename(resolvedRoot),
           extension: path.extname(resolvedRoot),
-          sizeBytes: rootStat.size
+          sizeBytes: rootLstat.size
         }
       ],
       skipped: {
@@ -52,7 +147,17 @@ export async function discoverFiles(options = {}) {
     };
   }
 
-  if (!rootStat.isDirectory()) {
+  let isDirectory = rootLstat.isDirectory();
+  if (!isDirectory) {
+    try {
+      const rootStat = await fs.stat(resolvedRoot);
+      isDirectory = rootStat.isDirectory();
+    } catch {
+      isDirectory = false;
+    }
+  }
+
+  if (!isDirectory) {
     throw new Error(`The specified path is not a directory or file: "${resolvedRoot}"`);
   }
 
@@ -67,12 +172,6 @@ export async function discoverFiles(options = {}) {
   const maxFiles = options.maxFiles !== undefined
     ? options.maxFiles
     : DEFAULT_CONFIG.maxFiles;
-
-  const maxFileSizeKb = options.maxFileSizeKb !== undefined
-    ? options.maxFileSizeKb
-    : DEFAULT_CONFIG.maxFileSizeKb;
-
-  const maxSizeBytes = maxFileSizeKb * 1024;
 
   // 2. Initialize ignore matcher
   const ignoreMatcher = await createIgnoreMatcher({
@@ -110,6 +209,7 @@ export async function discoverFiles(options = {}) {
   };
 
   const validCandidates = [];
+  const dirSymlinkCache = new Map();
 
   for (const entry of entries) {
     const relPath = normalizeRelativePath(entry);
@@ -125,32 +225,25 @@ export async function discoverFiles(options = {}) {
       continue;
     }
 
-    const absPath = path.join(resolvedRoot, relPath);
-
-    try {
-      const fileStat = await fs.lstat(absPath);
-
-      // Exclude symlinks and non-regular files
-      if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
-        continue;
-      }
-
-      // Exclude files exceeding size limit
-      if (fileStat.size > maxSizeBytes) {
-        skipped.tooLarge++;
-        continue;
-      }
-
-      validCandidates.push({
-        absolutePath: absPath,
-        relativePath: relPath,
-        extension: path.extname(relPath),
-        sizeBytes: fileStat.size
-      });
-    } catch {
-      // If stat fails (e.g. broken link or deleted), skip
+    const verified = await verifyRegularFileNoSymlinks(resolvedRoot, relPath, dirSymlinkCache);
+    if (!verified || !verified.isRegularFile) {
       continue;
     }
+
+    // Exclude files exceeding size limit
+    if (verified.sizeBytes > maxSizeBytes) {
+      skipped.tooLarge++;
+      continue;
+    }
+
+    const absPath = path.join(resolvedRoot, relPath);
+
+    validCandidates.push({
+      absolutePath: absPath,
+      relativePath: relPath,
+      extension: path.extname(relPath),
+      sizeBytes: verified.sizeBytes
+    });
   }
 
   // 4. Sort deterministically by relative path
