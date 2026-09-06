@@ -1,0 +1,174 @@
+name: Bug report
+description: Report reproducible incorrect behavior in ACR
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with ACR (@debdipbhat/acr)!
+
+        > **Important Security Warning:**
+        > Never include API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`), npm tokens, authentication credentials, private repository contents, customer data, or confidential code in public issues.
+        > For suspected security vulnerabilities, please report them privately at: https://github.com/Debdip2003/ai-code-reviewer/security/advisories/new
+
+  - type: checkboxes
+    id: pre-flight
+    attributes:
+      label: Pre-flight Checks
+      description: Please verify before submitting.
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate.
+          required: true
+        - label: I confirm that no API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`), tokens, credentials, or confidential code are included.
+          required: true
+
+  - type: input
+    id: acr-version
+    attributes:
+      label: ACR Version
+      description: Run `acr --version` or `npx acr --version`.
+      placeholder: "e.g., 0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      description: Run `node -v` (ACR requires Node.js >= 20).
+      placeholder: "e.g., v20.18.0"
+    validations:
+      required: true
+
+  - type: input
+    id: npm-version
+    attributes:
+      label: npm Version
+      description: Run `npm -v`.
+      placeholder: "e.g., 10.8.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Which OS are you running ACR on?
+      options:
+        - Windows
+        - macOS
+        - Linux (Ubuntu, Debian, Fedora, etc.)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation Method
+      description: How is ACR installed or executed in your environment?
+      options:
+        - Project dependency
+        - Global installation
+        - npx
+        - Local development checkout
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact Sanitized Command
+      description: What exact command did you execute? (Remember to sanitize any internal paths or options)
+      placeholder: "acr review . --severity high"
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: A concise description of what actually happened (including exit code if known).
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction Steps
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Initialize project with `...`
+        2. Create file `...`
+        3. Run `acr review .`
+        4. Observe error `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Minimal Sanitized Code Sample
+      description: Minimal JavaScript / React JSX snippet that triggers or demonstrates the issue.
+      render: javascript
+    validations:
+      required: false
+
+  - type: dropdown
+    id: ai-enabled
+    attributes:
+      label: Was AI Review Enabled?
+      description: Did you pass `--ai` or enable AI in `.acrrc.json`?
+      options:
+        - "No (Deterministic analysis only)"
+        - "Yes (Groq provider)"
+        - "Yes (OpenAI provider)"
+    validations:
+      required: true
+
+  - type: input
+    id: groq-model
+    attributes:
+      label: AI / Groq Model ID (when applicable)
+      description: Model identifier used (e.g., `openai/gpt-oss-120b`, `gpt-5.6-luna`). Do NOT provide API keys.
+      placeholder: "e.g., openai/gpt-oss-120b"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized Logs / Output
+      description: Output from terminal or `--debug` run. Please ensure all secrets and proprietary paths are redacted.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant details, configuration file (`.acrrc.json`), or environment notes.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I confirm that this report contains a minimal, reproducible example.
+          required: true
+        - label: I confirm that no proprietary, confidential, or customer code is included in this report.
+          required: true

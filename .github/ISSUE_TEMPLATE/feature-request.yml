@@ -1,0 +1,107 @@
+name: Feature request
+description: Suggest an improvement for ACR
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve ACR (@debdipbhat/acr)!
+
+        > **Note:** Submitting a feature request does not guarantee immediate implementation. All proposals are reviewed based on project scope, maintenance feasibility, and architectural alignment. Note that code-splitting functionality belongs to the future V2 scope and should be discussed in an issue before implementation.
+
+  - type: checkboxes
+    id: pre-flight
+    attributes:
+      label: Pre-flight Checks
+      options:
+        - label: I have searched existing issues and roadmap items to ensure this is not a duplicate.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Being Solved
+      description: Is your feature request related to a specific problem or workflow friction?
+      placeholder: "A clear and concise description of what the limitation is."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you would like to see implemented.
+      placeholder: "A detailed explanation of the proposed feature or improvement."
+    validations:
+      required: true
+
+  - type: textarea
+    id: cli-experience
+    attributes:
+      label: Example CLI Experience
+      description: What would the command line flags, configuration, or terminal output look like?
+      placeholder: "acr review . --new-flag example"
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: A clear description of any alternative solutions, tools, or workarounds you have considered.
+    validations:
+      required: false
+
+  - type: input
+    id: framework
+    attributes:
+      label: Relevant JavaScript / React Framework
+      description: E.g., React 18/19, Next.js, Node.js ESM, Vanilla JS, etc.
+      placeholder: "e.g., React 19 / JSX"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: affected-areas
+    attributes:
+      label: Area of ACR Affected
+      description: Select all areas that apply.
+      options:
+        - label: Deterministic analysis (ESLint rules, React AST rules, Complexity analyzer)
+        - label: AI analysis & Groq / OpenAI provider integration
+        - label: CLI commands & Terminal / JSON reporters
+        - label: Git integration & changed-file diff scanning
+        - label: Caching & performance
+        - label: Documentation & developer tooling
+
+  - type: textarea
+    id: breaking-changes
+    attributes:
+      label: Potential Breaking Changes
+      description: Could this proposal change existing configuration schemas, exit codes, or CLI behavior?
+      placeholder: "None or describe potential breaking impacts."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contribution-readiness
+    attributes:
+      label: Willingness to Contribute
+      description: Would you be interested in contributing this feature?
+      options:
+        - "Yes, I would like to submit a Pull Request"
+        - "I can help test and provide feedback"
+        - "I can only submit the proposal at this time"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or references here.
+    validations:
+      required: false
