@@ -13,7 +13,7 @@ describe('discoverFiles', () => {
 
   afterEach(async () => {
     if (tempDir) {
-      await fs.rm(tempDir, { recursive: true, force: true });
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });
 
@@ -150,7 +150,7 @@ describe('discoverFiles', () => {
       let symlinkCreated = false;
       try {
         await fs.symlink(
-          path.join(outsideDir, 'ext.js'),
+          path.resolve(outsideDir, 'ext.js'),
           path.join(tempDir, 'src', 'symlink.js'),
           'file'
         );
@@ -164,7 +164,7 @@ describe('discoverFiles', () => {
         expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
       }
     } finally {
-      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });
 
@@ -176,12 +176,12 @@ describe('discoverFiles', () => {
       await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
 
       const linkType = process.platform === 'win32' ? 'junction' : 'dir';
-      await fs.symlink(outsideDir, path.join(tempDir, 'linked-external'), linkType);
+      await fs.symlink(path.resolve(outsideDir), path.join(tempDir, 'linked-external'), linkType);
 
       const result = await discoverFiles({ rootDirectory: tempDir });
       expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
     } finally {
-      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });
 
@@ -193,7 +193,7 @@ describe('discoverFiles', () => {
       await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
 
       const linkType = process.platform === 'win32' ? 'junction' : 'dir';
-      await fs.symlink(outsideDir, path.join(tempDir, 'linked-external'), linkType);
+      await fs.symlink(path.resolve(outsideDir), path.join(tempDir, 'linked-external'), linkType);
 
       const result = await discoverFiles({
         rootDirectory: tempDir,
@@ -202,7 +202,7 @@ describe('discoverFiles', () => {
 
       expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
     } finally {
-      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });
 
@@ -210,13 +210,17 @@ describe('discoverFiles', () => {
     await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
     await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
 
+    const tempTarget = path.join(tempDir, 'temp-target');
+    await fs.mkdir(tempTarget, { recursive: true });
+
     const linkType = process.platform === 'win32' ? 'junction' : 'dir';
     try {
       await fs.symlink(
-        path.join(tempDir, 'nonexistent-target'),
+        path.resolve(tempTarget),
         path.join(tempDir, 'broken-link'),
         linkType
       );
+      await fs.rm(tempTarget, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     } catch {
       // Ignore creation error if not supported
     }
@@ -232,7 +236,7 @@ describe('discoverFiles', () => {
     const linkType = process.platform === 'win32' ? 'junction' : 'dir';
     try {
       await fs.symlink(
-        path.join(tempDir, 'src'),
+        path.resolve(tempDir, 'src'),
         path.join(tempDir, 'src', 'loop'),
         linkType
       );
@@ -242,6 +246,23 @@ describe('discoverFiles', () => {
 
     const result = await discoverFiles({ rootDirectory: tempDir });
     expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+  });
+
+  it('should reject Windows directory junctions pointing outside rootDirectory', async () => {
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-reviewer-junc-out-'));
+    try {
+      await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'src', 'app.js'), '// app');
+      await fs.writeFile(path.join(outsideDir, 'ext.js'), '// ext');
+
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      await fs.symlink(path.resolve(outsideDir), path.join(tempDir, 'junction-dir'), linkType);
+
+      const result = await discoverFiles({ rootDirectory: tempDir });
+      expect(result.files.map((f) => f.relativePath)).toEqual(['src/app.js']);
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
   });
 
   it('should throw when root directory is not found or not a directory', async () => {
