@@ -466,8 +466,8 @@ console.log(`Analyzed ${result.summary.analyzed} changed files with ${result.fin
 Contributions are welcome. If you find a bug, have an idea, or want to improve ACR, open an issue or submit a pull request.
 
 - [Open an issue](https://github.com/Debdip2003/ai-code-reviewer/issues)
-- [Read the contribution guide](.github/CONTRIBUTING.md)
-- [Read the Code of Conduct](.github/CODE_OF_CONDUCT.md)
+- [Read the contribution guide](https://github.com/Debdip2003/ai-code-reviewer/blob/main/.github/CONTRIBUTING.md)
+- [Read the Code of Conduct](https://github.com/Debdip2003/ai-code-reviewer/blob/main/.github/CODE_OF_CONDUCT.md)
 - [Report a security vulnerability privately](https://github.com/Debdip2003/ai-code-reviewer/security/advisories/new)
 
 Please do not include API keys, credentials, private source code, or confidential information in public issues or pull requests.
