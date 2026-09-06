@@ -58,7 +58,7 @@ npm install -D @debdipbhat/acr
 ### One-Time Execution via npx
 
 ```bash
-npx acr review .
+npx @debdipbhat/acr review .
 ```
 
 ### Run Diagnostics
