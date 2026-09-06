@@ -155,7 +155,7 @@ npm run audit:prod
    git push -u origin feat/short-description
    ```
 3. Navigate to [https://github.com/Debdip2003/ai-code-reviewer](https://github.com/Debdip2003/ai-code-reviewer) and click **New Pull Request**.
-4. Fill out the [Pull Request Template](.github/pull_request_template.md) completely, detailing:
+4. Fill out the [Pull Request Template](pull_request_template.md) completely, detailing:
    * Summary of changes.
    * Reason for change.
    * Linked issue (`Closes #123`).
