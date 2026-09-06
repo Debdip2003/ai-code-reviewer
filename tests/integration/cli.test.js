@@ -35,13 +35,14 @@ describe('CLI Integration Tests', { timeout: 20000 }, () => {
     expect(result.stdout).toContain('cache');
   });
 
-  it('should display version information when invoked with --version', () => {
+  it('should display version information when invoked with --version', async () => {
+    const pkgJson = JSON.parse(await fs.readFile(path.resolve(__dirname, '../../package.json'), 'utf-8'));
     const result = spawnSync(process.execPath, [cliPath, '--version'], {
       encoding: 'utf-8'
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('0.1.0');
+    expect(result.stdout.trim()).toBe(pkgJson.version);
   });
 
   describe('doctor command', () => {
