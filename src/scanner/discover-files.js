@@ -12,15 +12,16 @@ import { createIgnoreMatcher, normalizeRelativePath } from './ignore-files.js';
 
 /**
  * Verifies that a relative path within rootDirectory contains no symbolic links,
- * junctions, or non-regular intermediate directories/files.
+ * junctions, or non-regular intermediate directories/files, and stays inside realRoot.
  *
  * @param {string} rootDirectory - Root directory path.
- * @param {string} relativePath - Normalized relative path with forward slashes.
+ * @param {string} relativePath - Relative path to inspect.
+ * @param {string} realRoot - Resolved real path of the root directory.
  * @param {Map<string, boolean>} [dirSymlinkCache] - Cache of verified directory paths.
  * @returns {Promise<{ isRegularFile: boolean, sizeBytes: number } | null>}
  */
-async function verifyRegularFileNoSymlinks(rootDirectory, relativePath, dirSymlinkCache = new Map()) {
-  const segments = relativePath.split('/');
+async function verifyRegularFileNoSymlinks(rootDirectory, relativePath, realRoot, dirSymlinkCache = new Map()) {
+  const segments = relativePath.split(/[/\\]/);
   let currentPath = rootDirectory;
 
   for (let i = 0; i < segments.length; i++) {
@@ -55,11 +56,27 @@ async function verifyRegularFileNoSymlinks(rootDirectory, relativePath, dirSymli
         if (!stat.isFile()) {
           return null;
         }
+
+        // Verify the real path does not escape realRoot
+        const realCandidate = await fs.realpath(currentPath);
+        const relFromRealRoot = path.relative(realRoot, realCandidate);
+        const isOutside =
+          relFromRealRoot === '..' ||
+          relFromRealRoot.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relFromRealRoot);
+
+        if (isOutside) {
+          return null;
+        }
+
         return { isRegularFile: true, sizeBytes: stat.size };
       }
-    } catch {
+    } catch (err) {
       if (!isLeaf) dirSymlinkCache.set(currentPath, true);
-      return null;
+      if (err.code === 'ENOENT') {
+        return null;
+      }
+      throw err;
     }
   }
 
@@ -148,6 +165,13 @@ export async function discoverFiles(options = {}) {
   }
 
   let isDirectory = rootLstat.isDirectory();
+  let realRoot;
+  try {
+    realRoot = await fs.realpath(resolvedRoot);
+  } catch (err) {
+    throw new Error(`The specified path is not a directory or file: "${resolvedRoot}"`, { cause: err });
+  }
+
   if (!isDirectory) {
     try {
       const rootStat = await fs.stat(resolvedRoot);
@@ -225,7 +249,7 @@ export async function discoverFiles(options = {}) {
       continue;
     }
 
-    const verified = await verifyRegularFileNoSymlinks(resolvedRoot, relPath, dirSymlinkCache);
+    const verified = await verifyRegularFileNoSymlinks(resolvedRoot, relPath, realRoot, dirSymlinkCache);
     if (!verified || !verified.isRegularFile) {
       continue;
     }
