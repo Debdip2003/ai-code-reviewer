@@ -1,6 +1,6 @@
 {
   "name": "@debdipbhat/acr",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Production-quality, terminal-first JavaScript and React code reviewer powered by static analysis and AI.",
   "type": "module",
   "main": "src/index.js",
