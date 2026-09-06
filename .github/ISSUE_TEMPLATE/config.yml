@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: "https://github.com/Debdip2003/ai-code-reviewer/security/advisories/new"
+    about: "Report suspected security vulnerabilities privately instead of opening a public issue."
+  - name: ACR npm package
+    url: "https://www.npmjs.com/package/@debdipbhat/acr"
+    about: "View installation instructions and published package versions."
