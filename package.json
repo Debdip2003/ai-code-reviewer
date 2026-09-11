@@ -48,8 +48,10 @@
     "prepack": "npm run release:check && npm test && npm run check"
   },
   "dependencies": {
+    "@babel/generator": "^8.0.4",
     "@babel/parser": "^8.0.4",
     "@babel/traverse": "^8.0.4",
+    "@babel/types": "^8.0.4",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "eslint": "^10.9.1",

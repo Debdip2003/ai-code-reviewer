@@ -37,6 +37,7 @@ export const SplitCandidateSchema = z
     externalImports: z.array(z.string()),
     capturedBindings: z.array(z.string()),
     safeForFutureExtraction: z.boolean(),
+    safety: z.enum(['automatic-ready', 'manual-review', 'blocked']).optional(),
     risks: z.array(z.string())
   })
   .strict()

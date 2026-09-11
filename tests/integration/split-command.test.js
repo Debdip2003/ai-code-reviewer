@@ -41,7 +41,7 @@ describe('Split Command Integration Tests', { timeout: 30000 }, () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout.replace(/\r?\n\s*/g, ' ')).toContain(
-      'Analyze a JavaScript or React file and propose a safe split plan without modifying source code.'
+      'Analyze a JavaScript or React file and propose an exact code split preview without modifying source code.'
     );
     expect(result.stdout).toContain('--format');
     expect(result.stdout).toContain('--target-dir');
@@ -70,14 +70,14 @@ describe('Split Command Integration Tests', { timeout: 30000 }, () => {
     expect(hashBefore).toBe(hashAfter);
 
     expect([0, 1]).toContain(result.status);
-    expect(result.stdout).toContain('ACR Split Planner');
-    expect(result.stdout).toContain('Safe extraction candidates');
+    expect(result.stdout).toContain('Split candidates found:');
+    expect(result.stdout).toContain('product-card');
     expect(result.stdout).toContain('ProductCard');
-    expect(result.stdout).toContain('useProducts');
-    expect(result.stdout).toContain('fetchProducts');
-    expect(result.stdout).toContain('formatPrice');
-    expect(result.stdout).toContain('PRODUCT_STATUS_LABELS');
-    expect(result.stdout).toContain('Dry run only. No source files were modified.');
+    expect(result.stdout).toContain('use-products');
+    expect(result.stdout).toContain('fetch-products');
+    expect(result.stdout).toContain('format-price');
+    expect(result.stdout).toContain('product-status-labels');
+    expect(result.stdout).toContain('No files were modified.');
 
     // Verify proposed directory was not created on disk
     const proposedDir = path.join(fixturesDir, 'large-react-component');
@@ -113,10 +113,11 @@ describe('Split Command Integration Tests', { timeout: 30000 }, () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('HTTP_STATUS_CODES');
-    expect(result.stdout).toContain('fetchUserData');
-    expect(result.stdout).toContain('sanitizeQueryParam');
-    expect(result.stdout).toContain('Candidates detected:');
+    expect(result.stdout).toContain('Split candidates found:');
+    expect(result.stdout).toContain('http-status-codes');
+    expect(result.stdout).toContain('fetch-user-data');
+    expect(result.stdout).toContain('build-query-string');
+    expect(result.stdout).toContain('No files were modified.');
   });
 
   it('should return exit code 0 on clean component with zero candidates', () => {
@@ -126,7 +127,7 @@ describe('Split Command Integration Tests', { timeout: 30000 }, () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Candidates detected: 0');
+    expect(result.stdout).toContain('Split candidates found: 0');
   });
 
   it('should return exit code 1 when candidates requiring manual review are detected', () => {
@@ -136,10 +137,9 @@ describe('Split Command Integration Tests', { timeout: 30000 }, () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('Candidates requiring manual review');
-    expect(result.stdout).toContain('handleCheckout');
-    expect(result.stdout).toContain('Risks:');
-    expect(result.stdout).toContain('Captures');
+    expect(result.stdout).toContain('Split candidates found:');
+    expect(result.stdout).toContain('handle-checkout');
+    expect(result.stdout).toContain('Safety: manual-review');
   });
 
   it('should fail with exit code 2 when file does not exist', () => {

@@ -1,6 +1,6 @@
 /**
- * Split Planner Terminal Reporter.
- * Formats dry-run code-splitting plans for terminal display matching ACR V2 CLI design specs.
+ * Split Planner Terminal Reporter for ACR Code Splitter.
+ * Formats candidate discovery listings and transformation preview reports.
  */
 
 import chalk from 'chalk';
@@ -10,82 +10,46 @@ import chalk from 'chalk';
  * @param {string} kind
  * @returns {string}
  */
-function formatCandidateType(kind) {
+export function formatCandidateType(kind) {
   switch (kind) {
     case 'react-component':
       return 'React component';
     case 'custom-hook':
-      return 'Custom Hook';
+      return 'custom hook';
     case 'service':
-      return 'Service';
+      return 'service';
     case 'utility':
-      return 'Utility';
+      return 'utility';
     case 'constant-group':
-      return 'Constant group';
+      return 'constant group';
     default:
       return kind;
   }
 }
 
 /**
- * Prints the split planner report to stdout.
+ * Prints candidate discovery listing to stdout.
  *
- * @param {Object} plan - Validated split plan object.
+ * @param {Object} plan - Split plan containing candidate list.
  */
-export function printSplitTerminalReport(plan) {
-  console.log(chalk.bold('ACR Split Planner\n'));
-  console.log(`Source: ${plan.sourceFile}`);
-  console.log(`Lines: ${plan.sourceSummary.lines}`);
-  console.log(`Mode: ${plan.mode}\n`);
+export function printCandidateListingReport(plan) {
+  const count = plan.candidates?.length || 0;
+  console.log(`Split candidates found: ${count}\n`);
 
-  const safeCandidates = plan.candidates.filter((c) => c.safeForFutureExtraction);
-  const manualCandidates = plan.candidates.filter((c) => !c.safeForFutureExtraction);
-
-  let candidateIndex = 1;
-
-  if (safeCandidates.length > 0) {
-    console.log(chalk.green.bold('Safe extraction candidates\n'));
-
-    for (const cand of safeCandidates) {
-      console.log(`${candidateIndex}. ${chalk.bold(cand.symbolName)}`);
-      console.log(`   Type: ${formatCandidateType(cand.kind)}`);
-      console.log(`   Lines: ${cand.lineStart}–${cand.lineEnd}`);
-      console.log(`   Target: ${cand.targetFile}`);
-
-      if (cand.dependencies.length > 0) {
-        console.log(`   Dependencies: ${cand.dependencies.join(', ')}`);
-      }
-      if (cand.dependents.length > 0) {
-        console.log(`   Used by: ${cand.dependents.join(', ')}`);
-      }
-
-      const confPct = Math.round(cand.confidence * 100);
-      console.log(`   Confidence: ${confPct}%\n`);
-      console.log('   Reason:');
-      console.log(`   ${cand.reason}\n`);
-      candidateIndex++;
-    }
+  if (count === 0) {
+    console.log('No split candidates detected.\n');
+    console.log('No files were modified.');
+    return;
   }
 
-  if (manualCandidates.length > 0) {
-    console.log(chalk.yellow.bold('Candidates requiring manual review\n'));
-
-    for (const cand of manualCandidates) {
-      console.log(`${candidateIndex}. ${chalk.bold(cand.symbolName)}`);
-      console.log(`   Type: ${formatCandidateType(cand.kind)}`);
-      console.log(`   Lines: ${cand.lineStart}–${cand.lineEnd}`);
-      console.log(`   Safe: ${chalk.red('No')}\n`);
-
-      if (cand.risks && cand.risks.length > 0) {
-        console.log('   Risks:');
-        for (const risk of cand.risks) {
-          console.log(`   - ${risk}`);
-        }
-        console.log('');
-      }
-      candidateIndex++;
-    }
-  }
+  plan.candidates.forEach((cand, index) => {
+    console.log(`${index + 1}. ${cand.id}`);
+    console.log(`   Symbol: ${cand.symbolName}`);
+    console.log(`   Type: ${formatCandidateType(cand.kind)}`);
+    console.log(`   Lines: ${cand.lineStart}-${cand.lineEnd}`);
+    console.log(`   Suggested target: ${cand.targetFile}`);
+    console.log(`   Safety: ${cand.safety || (cand.safeForFutureExtraction ? 'automatic-ready' : 'manual-review')}\n`);
+  });
 
   if (plan.warnings && plan.warnings.length > 0) {
     console.log(chalk.yellow.bold('Warnings:'));
@@ -95,11 +59,120 @@ export function printSplitTerminalReport(plan) {
     console.log('');
   }
 
-  console.log(chalk.bold('Summary\n'));
-  console.log(`Candidates detected: ${plan.summary.detected}`);
-  console.log(`Safe candidates: ${plan.summary.safe}`);
-  console.log(`Manual review: ${plan.summary.unsafe}`);
-  console.log(`Files modified: 0\n`);
-
-  console.log(chalk.cyan('Dry run only. No source files were modified.'));
+  console.log('No files were modified.');
 }
+
+/**
+ * Prints transformation preview report to stdout.
+ *
+ * @param {Object} plan - Transformation plan matching TransformationPlanSchema.
+ * @param {Object} [options={}]
+ * @param {boolean} [options.showCodePreview=false]
+ */
+export function printTransformationPreviewReport(plan, { showCodePreview = false } = {}) {
+  console.log(chalk.bold('ACR split preview\n'));
+  console.log(`Source:    ${plan.sourceFile}`);
+  console.log(`Candidate: ${plan.candidate.symbol} (${formatCandidateType(plan.candidate.kind)})`);
+  console.log(`Target:    ${plan.targetFile}`);
+
+  const safety = plan.candidate.safety;
+  const safetyDisplay =
+    safety === 'automatic-ready'
+      ? chalk.green(safety)
+      : safety === 'manual-review'
+        ? chalk.yellow(safety)
+        : chalk.red(safety);
+
+  console.log(`Safety:    ${safetyDisplay}\n`);
+
+  // Planned boundary
+  console.log(chalk.bold('Planned boundary:'));
+
+  // Props / Parameters
+  const props = plan.contract.capturedBindings || [];
+  if (props.length > 0) {
+    console.log('  Props:');
+    for (const p of props) {
+      if (p.propName && p.propName !== p.name) {
+        console.log(`    ${p.propName} <- ${p.name}`);
+      } else {
+        console.log(`    ${p.name}`);
+      }
+    }
+    console.log('');
+  }
+
+  // Target imports
+  const targetImports = plan.contract.imports || [];
+  if (targetImports.length > 0) {
+    console.log('  Target imports:');
+    for (const imp of targetImports) {
+      console.log(`    ${imp.imported.join(', ')} from ${imp.source}`);
+    }
+    console.log('');
+  }
+
+  // Moved declarations
+  const moved = plan.contract.movedDependencies || [];
+  if (moved.length > 0 || plan.candidate.symbol) {
+    console.log('  Moved declarations:');
+    console.log(`    ${plan.candidate.symbol}`);
+    for (const m of moved) {
+      console.log(`    ${m}`);
+    }
+    console.log('');
+  }
+
+  // Source imports
+  console.log('  Source imports:');
+  console.log(`    ${plan.candidate.symbol} from ${plan.targetFile.startsWith('.') ? plan.targetFile : './' + plan.targetFile}\n`);
+
+  // Validation checks
+  console.log(chalk.bold('Validation:'));
+  const v = plan.validation;
+  console.log(`  ${v.sourceParseable ? chalk.green('✓') : chalk.red('✗')} Proposed source parses`);
+  console.log(`  ${v.targetParseable ? chalk.green('✓') : chalk.red('✗')} Proposed target parses`);
+  console.log(`  ${v.unresolvedBindings.length === 0 ? chalk.green('✓') : chalk.red('✗')} All bindings resolved`);
+  console.log(`  ${v.nameCollisions.length === 0 ? chalk.green('✓') : chalk.red('✗')} No naming collisions`);
+  console.log(`  ${v.cycles.length === 0 ? chalk.green('✓') : chalk.red('✗')} No circular imports\n`);
+
+  if (v.errors && v.errors.length > 0) {
+    console.log(chalk.red.bold('Errors:'));
+    for (const err of v.errors) {
+      console.log(chalk.red(`  ✗ ${err}`));
+    }
+    console.log('');
+  }
+
+  if (v.warnings && v.warnings.length > 0) {
+    console.log(chalk.yellow.bold('Warnings:'));
+    for (const warn of v.warnings) {
+      console.log(chalk.yellow(`  ⚠ ${warn}`));
+    }
+    console.log('');
+  }
+
+  // Code preview if requested
+  if (showCodePreview && plan.preview) {
+    const separator = '='.repeat(80);
+    console.log(separator);
+    console.log(`CREATE ${plan.targetFile}`);
+    console.log(separator);
+    console.log(plan.preview.target);
+    console.log('\n' + separator);
+    console.log(`UPDATE ${plan.sourceFile}`);
+    console.log(separator);
+    console.log(plan.preview.source);
+    console.log('\n' + separator + '\n');
+  }
+
+  console.log('No files were modified.');
+  if (!showCodePreview) {
+    console.log('Run with --preview to display the proposed files.');
+  }
+}
+
+/**
+ * Backward-compatible alias for printCandidateListingReport.
+ */
+export const printSplitTerminalReport = printCandidateListingReport;

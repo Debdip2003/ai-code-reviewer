@@ -70,14 +70,34 @@ export { splitAction } from './cli/commands/split.js';
 
 // Code Splitter (V2 Experimental)
 export { createSplitPlan } from './splitter/split-planner.js';
+export { createTransformationPlan } from './splitter/transformation-planner.js';
 export { buildDependencyGraph } from './splitter/dependency-graph.js';
 export { detectSplitCandidates } from './splitter/candidate-detector.js';
 export { validateSplitPlan } from './splitter/plan-validator.js';
+export { createExtractionContract } from './splitter/extraction-contract.js';
+export { planReactProps } from './splitter/prop-planner.js';
+export { planDependencyPlacement } from './splitter/dependency-placement.js';
+export { planImports } from './splitter/import-planner.js';
+export { planExports } from './splitter/export-planner.js';
+export { buildLocalModuleGraph } from './splitter/module-graph.js';
+export { detectImportCycles } from './splitter/cycle-detector.js';
+export { generateTransformationPreviews } from './splitter/preview-generator.js';
+export { toKebabId, parseAst, generateCode } from './splitter/ast-utils.js';
 export { SplitPlanSchema, SplitCandidateSchema } from './splitter/split-plan-schema.js';
+export { TransformationPlanSchema } from './splitter/transformation-plan-schema.js';
 export {
   SplitError,
   SplitInputError,
   SplitValidationError,
-  SplitAIPlanningError
+  SplitAIPlanningError,
+  CandidateNotFoundError,
+  UnsafeExtractionError,
+  TargetCollisionError,
+  TargetOutsideProjectError,
+  UnresolvedBindingError,
+  CircularDependencyError,
+  PreviewGenerationError,
+  TransformationValidationError
 } from './splitter/split-errors.js';
+
 

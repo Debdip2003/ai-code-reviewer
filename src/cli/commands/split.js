@@ -5,13 +5,16 @@
 
 import { loadConfig } from '../../config/load-config.js';
 import { createSplitPlan } from '../../splitter/split-planner.js';
+import { createTransformationPlan } from '../../splitter/transformation-planner.js';
 import { createAIProvider } from '../../ai/provider.js';
 import { EXIT_CODES } from '../../review/exit-codes.js';
 import { printError } from '../output/terminal.js';
 import { formatJsonOutput } from '../output/json.js';
-import { printSplitTerminalReport } from '../output/split-terminal.js';
+import {
+  printCandidateListingReport,
+  printTransformationPreviewReport
+} from '../output/split-terminal.js';
 import { SplitError } from '../../splitter/split-errors.js';
-import { JavaScriptParseError } from '../../parser/parse-javascript.js';
 
 /**
  * Executes the split command action.
@@ -19,6 +22,9 @@ import { JavaScriptParseError } from '../../parser/parse-javascript.js';
  * @param {string} filePath - Path to the file to split.
  * @param {Object} [options={}] - Command options.
  * @param {'terminal' | 'json'} [options.format] - Output format.
+ * @param {string} [options.candidate] - Selected candidate ID to extract.
+ * @param {string} [options.target] - Target file path override.
+ * @param {boolean} [options.preview] - Display proposed source and target file contents.
  * @param {string} [options.targetDir] - Proposed target directory.
  * @param {string | number} [options.minLines] - Minimum lines threshold.
  * @param {boolean} [options.ai] - Enable AI-assisted planning.
@@ -88,6 +94,43 @@ export async function splitAction(filePath, options = {}) {
   }
 
   try {
+    // -------------------------------------------------------------
+    // Workflow A: Candidate Selected -> Transformation Preview Plan
+    // -------------------------------------------------------------
+    if (options.candidate) {
+      const transformResult = await createTransformationPlan({
+        projectRoot: config.rootDirectory || process.cwd(),
+        filePath,
+        candidateId: options.candidate,
+        targetPathOverride: options.target || null,
+        includePreview: Boolean(options.preview),
+        config,
+        signal: options.signal
+      });
+
+      const plan = transformResult.plan;
+
+      if (outputFormat === 'json') {
+        console.log(formatJsonOutput(plan));
+      } else {
+        printTransformationPreviewReport(plan, {
+          showCodePreview: Boolean(options.preview)
+        });
+      }
+
+      if (plan.candidate.safety === 'blocked') {
+        process.exitCode = EXIT_CODES.EXECUTION_ERROR;
+      } else if (plan.candidate.safety === 'manual-review') {
+        process.exitCode = EXIT_CODES.FINDINGS;
+      } else {
+        process.exitCode = EXIT_CODES.SUCCESS;
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------
+    // Workflow B: Candidate Discovery Listing
+    // -------------------------------------------------------------
     const result = await createSplitPlan({
       projectRoot: config.rootDirectory || process.cwd(),
       filePath,
@@ -105,12 +148,10 @@ export async function splitAction(filePath, options = {}) {
       };
       console.log(formatJsonOutput(jsonPayload));
     } else {
-      printSplitTerminalReport(plan);
+      printCandidateListingReport(plan);
     }
 
     // Exit code determination:
-    // 0 = success, all candidates safe (or 0 candidates)
-    // 1 = contains manual review candidates (unsafe > 0)
     if (plan.summary.unsafe > 0) {
       process.exitCode = EXIT_CODES.FINDINGS;
     } else {
@@ -149,13 +190,16 @@ export async function splitAction(filePath, options = {}) {
 export function registerSplitCommand(program, signal) {
   program
     .command('split')
-    .description('Analyze a JavaScript or React file and propose a safe split plan without modifying source code.')
-    .argument('<file>', 'Path to the JavaScript or React file to analyze')
+    .description('Analyze a JavaScript or React file and propose an exact code split preview without modifying source code.')
+    .argument('<file>', 'Path to the JavaScript, JSX, TypeScript, or TSX file to analyze')
     .option('-f, --format <format>', 'Output format (terminal or json)')
+    .option('--candidate <id>', 'Candidate to extract')
+    .option('--target <path>', 'Override the suggested target path')
+    .option('--preview', 'Show proposed source and target file contents')
     .option('--target-dir <dir>', 'Target directory for proposed split files')
     .option('--min-lines <number>', 'Minimum candidate line count')
-    .option('--ai', 'Enable AI-assisted split planning')
-    .option('--no-ai', 'Disable AI-assisted split planning')
+    .option('--ai', 'Use Groq/OpenAI to improve naming and explanations')
+    .option('--no-ai', 'Disable AI')
     .action(async (file, options) => {
       await splitAction(file, { ...options, signal });
     });

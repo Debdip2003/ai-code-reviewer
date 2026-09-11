@@ -6,6 +6,7 @@
 
 import path from 'node:path';
 import traversePkg from '@babel/traverse';
+import { toKebabId } from './ast-utils.js';
 
 // Safe interop for @babel/traverse CommonJS/ESM export
 const traverse = traversePkg.default || traversePkg;
@@ -192,6 +193,62 @@ function performsExternalServiceOperations(rootNode) {
 }
 
 /**
+ * Checks if a node calls React hooks conditionally (e.g. inside if, loops, or logical expressions).
+ * @param {Object} rootNode
+ * @returns {boolean}
+ */
+function hasConditionalHooks(rootNode) {
+  if (!rootNode) return false;
+  let found = false;
+
+  function walk(node, inConditional = false) {
+    if (!node || typeof node !== 'object' || found) return;
+
+    const isConditionalBoundary =
+      inConditional ||
+      node.type === 'IfStatement' ||
+      node.type === 'SwitchStatement' ||
+      node.type === 'WhileStatement' ||
+      node.type === 'DoWhileStatement' ||
+      node.type === 'ForStatement' ||
+      node.type === 'ForInStatement' ||
+      node.type === 'ForOfStatement' ||
+      node.type === 'ConditionalExpression' ||
+      node.type === 'LogicalExpression';
+
+    if (inConditional && node.type === 'CallExpression') {
+      const callee = node.callee;
+      if (
+        (callee.type === 'Identifier' && /^use[A-Z]/.test(callee.name)) ||
+        (callee.type === 'MemberExpression' &&
+          callee.object?.name === 'React' &&
+          /^use[A-Z]/.test(callee.property?.name || ''))
+      ) {
+        found = true;
+        return;
+      }
+    }
+
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'tokens' || key === 'comments' || key === 'parent') {
+        continue;
+      }
+      const val = node[key];
+      if (Array.isArray(val)) {
+        for (const child of val) {
+          if (child && typeof child === 'object') walk(child, isConditionalBoundary);
+        }
+      } else if (val && typeof val === 'object') {
+        walk(val, isConditionalBoundary);
+      }
+    }
+  }
+
+  walk(rootNode, false);
+  return found;
+}
+
+/**
  * Checks if a node contains eval, with, or dynamic unresolved features.
  * @param {Object} rootNode
  * @returns {string[]} Detected syntax risk messages.
@@ -199,6 +256,10 @@ function performsExternalServiceOperations(rootNode) {
 function inspectSyntaxRisks(rootNode) {
   const risks = [];
   if (!rootNode) return risks;
+
+  if (hasConditionalHooks(rootNode)) {
+    risks.push('Conditional hook execution detected');
+  }
 
   function walk(node) {
     if (!node || typeof node !== 'object') return;
@@ -213,6 +274,14 @@ function inspectSyntaxRisks(rootNode) {
       node.callee.name === 'eval'
     ) {
       risks.push('Uses dynamic eval()');
+    }
+
+    if (
+      node.type === 'MemberExpression' &&
+      ((node.object?.name === 'module' && node.property?.name === 'exports') ||
+        (node.object?.name === 'exports'))
+    ) {
+      risks.push('Unsupported CommonJS module exports');
     }
 
     for (const key of Object.keys(node)) {
@@ -651,10 +720,27 @@ export function detectSplitCandidates({
         const risks = Array.from(captured).map(
           (varName) => `Captures ${varName} from outer scope`
         );
+
+        // Check if any captured variables are mutated
+        pathNode.traverse({
+          AssignmentExpression(assignPath) {
+            const left = assignPath.node.left;
+            if (left.type === 'Identifier' && captured.has(left.name)) {
+              risks.push(`Captures mutable variable ${left.name} which cannot safely become a prop`);
+            }
+          },
+          UpdateExpression(updPath) {
+            const arg = updPath.node.argument;
+            if (arg.type === 'Identifier' && captured.has(arg.name)) {
+              risks.push(`Captures mutable variable ${arg.name} which cannot safely become a prop`);
+            }
+          }
+        });
+
         const isComponent = /^[A-Z]/.test(symbolName) && returnsJsx(pathNode.node);
 
         candidates.push({
-          id: `candidate-${symbolName}-${lineStart}`,
+          id: symbolName,
           kind: isComponent ? 'react-component' : 'utility',
           symbolName,
           lineStart,
@@ -682,5 +768,36 @@ export function detectSplitCandidates({
   });
 
   // Limit to maxCandidates
-  return candidates.slice(0, maxCandidates);
+  const sliced = candidates.slice(0, maxCandidates);
+
+  // Assign stable kebab candidate IDs with deterministic collision suffix & classify safety
+  const idCounts = new Map();
+  for (const cand of sliced) {
+    const baseId = toKebabId(cand.symbolName);
+    const count = (idCounts.get(baseId) || 0) + 1;
+    idCounts.set(baseId, count);
+    cand.id = count === 1 ? baseId : `${baseId}-${count}`;
+
+    const isBlocked = cand.risks.some(
+      (r) =>
+        r.includes('Conditional hook') ||
+        r.includes('eval()') ||
+        r.includes('with statement') ||
+        r.includes('CommonJS') ||
+        r.includes('mutable variable')
+    );
+
+    if (isBlocked) {
+      cand.safety = 'blocked';
+      cand.safeForFutureExtraction = false;
+    } else if (!cand.safeForFutureExtraction || cand.capturedBindings.length > 0 || cand.risks.length > 0) {
+      cand.safety = 'manual-review';
+      cand.safeForFutureExtraction = false;
+    } else {
+      cand.safety = 'automatic-ready';
+      cand.safeForFutureExtraction = true;
+    }
+  }
+
+  return sliced;
 }

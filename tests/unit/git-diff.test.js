@@ -19,7 +19,11 @@ describe('Git Diff Discovery', () => {
 
   afterEach(async () => {
     if (tempDir) {
-      await fs.rm(tempDir, { recursive: true, force: true });
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      } catch {
+        // Ignore Windows temporary locks on temp folder
+      }
     }
   });
 
