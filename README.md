@@ -458,10 +458,30 @@ const result = await reviewRepository({
   }
 });
 
-console.log(`Analyzed ${result.summary.analyzed} changed files with ${result.findings.length} findings.`);
+## Experimental code-splitting planner
+
+ACR can analyze a JavaScript or React file and propose extraction candidates without modifying the source.
+
+```bash
+npx acr split src/ProductPage.jsx
 ```
 
+Generate JSON:
+
+```bash
+npx acr split src/ProductPage.jsx --format json
+```
+
+Use optional AI-assisted planning:
+
+```bash
+npx acr split src/ProductPage.jsx --ai
+```
+
+This release produces a dry-run plan only. Automatic transformations are not implemented yet.
+
 ## Contributing
+
 
 Contributions are welcome. If you find a bug, have an idea, or want to improve ACR, open an issue or submit a pull request.
 

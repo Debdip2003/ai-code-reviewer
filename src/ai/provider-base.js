@@ -46,4 +46,21 @@ export class AIProvider {
   async reviewChunk(_request) {
     throw new Error('reviewChunk() must be implemented');
   }
+
+  /**
+   * Proposes AI planning enhancements for code splitting candidates.
+   *
+   * @param {Object} request - Request parameters.
+   * @param {string} request.sourceFile - Source file path.
+   * @param {string} request.source - Raw source code.
+   * @param {Array<Object>} request.candidates - Deterministic candidate list.
+   * @param {string} [request.model] - Target AI model name.
+   * @param {number} [request.maxOutputTokens] - Maximum output tokens.
+   * @param {AbortSignal} [request.signal] - Abort signal.
+   * @returns {Promise<{ candidates: Array<{ id: string, reason?: string, confidence?: number, additionalRisks?: string[] }> }>}
+   */
+  async planSplit(_request) {
+    throw new Error('planSplit() must be implemented');
+  }
 }
+

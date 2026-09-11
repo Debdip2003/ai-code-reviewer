@@ -10,6 +10,7 @@ import { registerReviewCommand } from '../src/cli/commands/review.js';
 import { registerInitCommand } from '../src/cli/commands/init.js';
 import { registerCacheCommand } from '../src/cli/commands/cache.js';
 import { registerDoctorCommand } from '../src/cli/commands/doctor.js';
+import { registerSplitCommand } from '../src/cli/commands/split.js';
 import { EXIT_CODES } from '../src/review/exit-codes.js';
 import { printError } from '../src/cli/output/terminal.js';
 
@@ -35,6 +36,7 @@ try {
     .version(pkg.version, '-v, --version', 'Output current version');
 
   registerReviewCommand(program, controller.signal);
+  registerSplitCommand(program, controller.signal);
   registerInitCommand(program);
   registerCacheCommand(program);
   registerDoctorCommand(program);

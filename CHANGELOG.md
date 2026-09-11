@@ -5,7 +5,18 @@ All notable changes to the **ACR (Autonomous Code Reviewer)** package will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Experimental Code-Splitting Planner (`acr split <file>`)**: Read-only dry-run planner that analyzes JavaScript/React source files, constructs AST dependency graphs, detects extraction candidates across React components, custom hooks, utilities, services, and constant groups, validates proposed directory structures, and emits terminal or JSON plans without mutating source files.
+- **AST Dependency Graph (`src/splitter/dependency-graph.js`)**: Tracks top-level declarations, imports, aliases, dependencies, reverse dependents, and captured closures using Babel scope analysis.
+- **Candidate Detection & Safety Analysis (`src/splitter/candidate-detector.js`)**: Identifies candidates with conservative React component and hook detection, pure utility and service classification, and captures outer scope risks.
+- **Target Path Resolution (`src/splitter/target-path.js`)**: Deterministically proposes repository-relative target filenames with traversal rejection and existing file conflict detection.
+- **Strict Zod Plan Validation (`src/splitter/split-plan-schema.js` & `src/splitter/plan-validator.js`)**: Validates plan structure, mode (`dry-run`), line ranges, summary counts, and circular dependencies.
+- **Optional AI Planning Integration**: Supports AI candidate ranking and architectural risk analysis via `--ai` using structured outputs.
+
 ## [0.1.0] - 2026-09-06
+
 
 ### Added
 - **Product Rebranding**: Rebranded product and CLI executable to `acr` under scoped package `@debdipbhat/acr`.

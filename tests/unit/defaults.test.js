@@ -63,6 +63,14 @@ describe('DEFAULT_CONFIG and Constants', () => {
         enabled: true,
         directory: '.acr-cache',
         maxEntries: 1000
+      },
+      splitter: {
+        enabled: true,
+        minFileLines: 120,
+        minCandidateLines: 20,
+        targetDirectory: null,
+        maxCandidates: 10,
+        aiPlanning: false
       }
     });
   });
@@ -76,6 +84,8 @@ describe('DEFAULT_CONFIG and Constants', () => {
     expect(Object.isFrozen(DEFAULT_CONFIG.analyzers.react)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.ai)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.cache)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.splitter)).toBe(true);
+
 
     expect(() => {
       // @ts-expect-error - testing immutability

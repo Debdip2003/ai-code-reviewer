@@ -66,3 +66,18 @@ export { runDoctorChecks, doctorAction } from './cli/commands/doctor.js';
 export { reviewAction } from './cli/commands/review.js';
 export { initAction } from './cli/commands/init.js';
 export { cacheClearAction } from './cli/commands/cache.js';
+export { splitAction } from './cli/commands/split.js';
+
+// Code Splitter (V2 Experimental)
+export { createSplitPlan } from './splitter/split-planner.js';
+export { buildDependencyGraph } from './splitter/dependency-graph.js';
+export { detectSplitCandidates } from './splitter/candidate-detector.js';
+export { validateSplitPlan } from './splitter/plan-validator.js';
+export { SplitPlanSchema, SplitCandidateSchema } from './splitter/split-plan-schema.js';
+export {
+  SplitError,
+  SplitInputError,
+  SplitValidationError,
+  SplitAIPlanningError
+} from './splitter/split-errors.js';
+
