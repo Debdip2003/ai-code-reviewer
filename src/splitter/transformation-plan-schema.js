@@ -1,6 +1,6 @@
 /**
- * Zod Schema definitions for ACR Code Splitting Transformation Plans (Phase 2 Preview).
- * Enforces structured, validated preview representations of module extractions.
+ * Zod Schema definitions for ACR Code Splitting Transformation Plans (Phase 2 Preview & Phase 3 Apply).
+ * Enforces structured, validated representations of module extractions and applied operations.
  */
 
 import { z } from 'zod';
@@ -117,9 +117,50 @@ export const TransformationPlanSchema = z
     contract: ExtractionContractSchema,
     operations: z.array(PlanOperationSchema),
     validation: TransformationValidationSchema,
+    sourceHash: z.string().length(64).optional(),
+    before: z
+      .object({
+        sourceHash: z.string().length(64),
+        targetExisted: z.boolean()
+      })
+      .strict()
+      .optional(),
     filesModified: z.literal(0, {
       errorMap: () => ({ message: 'filesModified must be 0 in preview mode' })
     }),
     preview: TransformationPreviewContentSchema.optional()
   })
   .strict();
+
+export const ApplyResultSchema = z
+  .object({
+    success: z.boolean(),
+    mode: z.literal('apply'),
+    operationId: z.string().min(1),
+    sourceFile: z.string().min(1),
+    targetFile: z.string().min(1),
+    candidate: z.object({
+      id: z.string().min(1),
+      symbol: z.string().min(1),
+      kind: CandidateKindSchema.optional()
+    }).passthrough(),
+    files: z
+      .object({
+        updated: z.array(z.string()),
+        created: z.array(z.string())
+      })
+      .strict(),
+    validation: z
+      .object({
+        preWrite: z.string(),
+        postWrite: z.string()
+      })
+      .strict(),
+    backup: z
+      .object({
+        created: z.boolean(),
+        operationId: z.string()
+      })
+      .strict()
+  })
+  .passthrough();

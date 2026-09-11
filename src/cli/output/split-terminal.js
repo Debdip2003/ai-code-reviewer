@@ -1,6 +1,7 @@
 /**
  * Split Planner Terminal Reporter for ACR Code Splitter.
- * Formats candidate discovery listings and transformation preview reports.
+ * Formats candidate discovery listings, transformation preview reports,
+ * apply execution summaries, history logs, and rollback reports.
  */
 
 import chalk from 'chalk';
@@ -170,6 +171,132 @@ export function printTransformationPreviewReport(plan, { showCodePreview = false
   if (!showCodePreview) {
     console.log('Run with --preview to display the proposed files.');
   }
+}
+
+/**
+ * Prints apply transaction success report to stdout.
+ *
+ * @param {Object} result
+ */
+export function printApplySuccessReport(result) {
+  console.log(chalk.green.bold('ACR split applied successfully\n'));
+  console.log(`Operation: ${result.operationId}`);
+  console.log(`Source:    ${result.sourceFile}`);
+  console.log(`Candidate: ${result.candidate.symbol} (${result.candidate.id})`);
+  console.log(`Target:    ${result.targetFile}\n`);
+
+  console.log(chalk.bold('Changes:'));
+  for (const f of result.files.updated) {
+    console.log(`  UPDATE ${f}`);
+  }
+  for (const f of result.files.created) {
+    console.log(`  CREATE ${f}`);
+  }
+  console.log('');
+
+  console.log(chalk.bold('Validation:'));
+  console.log(`  ${chalk.green('✓')} Pre-write checks passed`);
+  console.log(`  ${chalk.green('✓')} Post-write AST validation passed\n`);
+
+  console.log(chalk.bold('Backup:'));
+  console.log(`  A persistent backup was saved in .acr/backups/${result.operationId}/\n`);
+
+  console.log(chalk.bold('Rollback:'));
+  console.log(`  To revert this operation, run:`);
+  console.log(`  acr split rollback ${result.operationId}\n`);
+}
+
+/**
+ * Prints split operation history list to stdout.
+ *
+ * @param {Array<Object>} operations
+ */
+export function printHistoryListReport(operations) {
+  if (!operations || operations.length === 0) {
+    console.log('No previous split operations found in history.\n');
+    return;
+  }
+
+  console.log(chalk.bold('Split history\n'));
+
+  for (const op of operations) {
+    console.log(chalk.bold(op.operationId));
+    console.log(`  Candidate: ${op.candidate?.symbol || 'unknown'} (${op.candidate?.id || 'unknown'})`);
+    console.log(`  Source:    ${op.sourceFile}`);
+    console.log(`  Target:    ${op.targetFile}`);
+    const statusColor =
+      op.status === 'completed'
+        ? chalk.green
+        : op.status === 'rolled-back'
+          ? chalk.blue
+          : chalk.yellow;
+    console.log(`  Status:    ${statusColor(op.status)}`);
+    console.log(`  Created:   ${op.createdAt}`);
+    if (op.recoveryState) {
+      console.log(`  Recovery:  ${chalk.yellow(op.recoveryState)}`);
+    }
+    console.log('');
+  }
+}
+
+/**
+ * Prints detailed history report for a single operation.
+ *
+ * @param {Object} manifest
+ */
+export function printHistoryDetailReport(manifest) {
+  console.log(chalk.bold(`Operation Details: ${manifest.operationId}\n`));
+  console.log(`Type:        ${manifest.type}`);
+  console.log(`Status:      ${manifest.status}`);
+  console.log(`Created:     ${manifest.createdAt}`);
+  console.log(`Completed:   ${manifest.completedAt || 'pending'}`);
+  console.log(`Source File: ${manifest.sourceFile}`);
+  console.log(`Target File: ${manifest.targetFile}`);
+  console.log(`Candidate:   ${manifest.candidate.symbol} (${manifest.candidate.id})\n`);
+
+  console.log(chalk.bold('Hashes:'));
+  console.log(`  Before source: ${manifest.before.sourceHash}`);
+  if (manifest.after?.sourceHash) {
+    console.log(`  After source:  ${manifest.after.sourceHash}`);
+  }
+  if (manifest.after?.targetHash) {
+    console.log(`  After target:  ${manifest.after.targetHash}`);
+  }
+  console.log('');
+
+  console.log(chalk.bold('Backups:'));
+  for (const b of manifest.backupFiles) {
+    console.log(`  ${b.originalPath} -> ${b.backupPath} (${b.hash.slice(0, 12)}...)`);
+  }
+  console.log('');
+
+  console.log(chalk.bold('Rollback:'));
+  console.log(`  Available: ${manifest.rollback.available}`);
+  if (manifest.rollback.rolledBackAt) {
+    console.log(`  Rolled back at: ${manifest.rollback.rolledBackAt}`);
+  }
+  console.log('');
+}
+
+/**
+ * Prints rollback completion report to stdout.
+ *
+ * @param {Object} result
+ */
+export function printRollbackSuccessReport(result) {
+  console.log(chalk.green.bold('ACR rollback completed\n'));
+  console.log(`Operation: ${result.operationId}`);
+  if (result.restored && result.restored.length > 0) {
+    for (const f of result.restored) {
+      console.log(`Restored:  ${f}`);
+    }
+  }
+  if (result.removed && result.removed.length > 0) {
+    for (const f of result.removed) {
+      console.log(`Removed:   ${f}`);
+    }
+  }
+  console.log('\nThe backup and operation manifest were retained.\n');
 }
 
 /**
