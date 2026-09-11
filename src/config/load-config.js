@@ -201,6 +201,44 @@ export const cacheConfigSchema = z
   .strict();
 
 /**
+ * Zod schema for splitter configuration.
+ */
+export const splitterConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    minFileLines: z
+      .number()
+      .int('minFileLines must be an integer')
+      .min(20, 'minFileLines must be at least 20')
+      .max(5000, 'minFileLines cannot exceed 5000')
+      .optional(),
+    minCandidateLines: z
+      .number()
+      .int('minCandidateLines must be an integer')
+      .min(5, 'minCandidateLines must be at least 5')
+      .max(1000, 'minCandidateLines cannot exceed 1000')
+      .optional(),
+    targetDirectory: z
+      .string()
+      .min(1, 'targetDirectory cannot be empty string')
+      .refine((dir) => !path.isAbsolute(dir), 'targetDirectory must be a relative path')
+      .refine(
+        (dir) => !dir.split(/[/\\]/).includes('..'),
+        'targetDirectory cannot contain directory traversal (..)'
+      )
+      .nullable()
+      .optional(),
+    maxCandidates: z
+      .number()
+      .int('maxCandidates must be an integer')
+      .min(1, 'maxCandidates must be at least 1')
+      .max(50, 'maxCandidates cannot exceed 50')
+      .optional(),
+    aiPlanning: z.boolean().optional()
+  })
+  .strict();
+
+/**
  * Zod schema for analyzers configuration group.
  */
 export const analyzersConfigSchema = z
@@ -254,9 +292,11 @@ export const userConfigSchema = z
       .optional(),
     analyzers: analyzersConfigSchema.optional(),
     ai: aiConfigSchema.optional(),
-    cache: cacheConfigSchema.optional()
+    cache: cacheConfigSchema.optional(),
+    splitter: splitterConfigSchema.optional()
   })
   .strict();
+
 
 /**
  * Formats Zod validation issues into a human-readable message.
@@ -429,6 +469,25 @@ export async function loadConfig(options = {}) {
     maxEntries: cliCache.maxEntries ?? fileCache.maxEntries ?? defaultCache.maxEntries
   };
 
+  const defaultSplitter = DEFAULT_CONFIG.splitter;
+  const fileSplitter = fileConfig.splitter || {};
+  const cliSplitter = cleanCliOverrides.splitter || {};
+
+  const mergedSplitter = {
+    enabled: cliSplitter.enabled ?? fileSplitter.enabled ?? defaultSplitter.enabled,
+    minFileLines: cliSplitter.minFileLines ?? fileSplitter.minFileLines ?? defaultSplitter.minFileLines,
+    minCandidateLines:
+      cliSplitter.minCandidateLines ?? fileSplitter.minCandidateLines ?? defaultSplitter.minCandidateLines,
+    targetDirectory:
+      cliSplitter.targetDirectory !== undefined
+        ? cliSplitter.targetDirectory
+        : fileSplitter.targetDirectory !== undefined
+        ? fileSplitter.targetDirectory
+        : defaultSplitter.targetDirectory,
+    maxCandidates: cliSplitter.maxCandidates ?? fileSplitter.maxCandidates ?? defaultSplitter.maxCandidates,
+    aiPlanning: cliSplitter.aiPlanning ?? fileSplitter.aiPlanning ?? defaultSplitter.aiPlanning
+  };
+
   return {
     include: [...mergedInclude],
     exclude: [...mergedExclude],
@@ -443,6 +502,7 @@ export async function loadConfig(options = {}) {
     },
     ai: mergedAi,
     cache: mergedCache,
+    splitter: mergedSplitter,
     rootDirectory
   };
 }

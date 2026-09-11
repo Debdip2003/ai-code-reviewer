@@ -332,4 +332,91 @@ export class OpenAIProvider extends AIProvider {
 
     throw lastError;
   }
+
+  /**
+   * Proposes AI planning enhancements for code splitting candidates.
+   *
+   * @param {Object} request
+   * @param {string} request.sourceFile - Relative source file path.
+   * @param {string} request.source - Raw source code.
+   * @param {Array<Object>} request.candidates - Deterministic candidate list.
+   * @param {string} [request.model] - Target AI model name.
+   * @param {number} [request.maxOutputTokens] - Maximum output tokens.
+   * @param {AbortSignal} [request.signal] - Abort signal.
+   * @returns {Promise<{ candidates: Array<{ id: string, reason?: string, confidence?: number, additionalRisks?: string[] }> }>}
+   */
+  async planSplit(request) {
+    if (!request || !Array.isArray(request.candidates)) {
+      throw new TypeError('request.candidates must be an array');
+    }
+
+    const { sourceFile, source, candidates, model, maxOutputTokens, signal } = request;
+
+    if (candidates.length === 0) {
+      return { candidates: [] };
+    }
+
+    const targetModel =
+      this.isGroq && (!model || model === 'gpt-5.6-luna')
+        ? 'openai/gpt-oss-120b'
+        : model || 'gpt-5.6-luna';
+
+    const systemPrompt =
+      'You are an expert JavaScript/React architectural code analysis engine. ' +
+      'Review the provided code-splitting candidates for the given source file. ' +
+      'Refine the explanation reasons and identify any additional architectural risks. ' +
+      'You MUST NOT invent new candidate IDs, modify line ranges, or convert unsafe candidates into safe ones. ' +
+      'Output valid JSON matching the format: { "candidates": [{ "id": string, "reason": string, "confidence": number, "additionalRisks": string[] }] }';
+
+    const userPrompt = JSON.stringify({
+      sourceFile,
+      sourceExcerpt: source.slice(0, 4000),
+      candidates: candidates.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        symbolName: c.symbolName,
+        lineStart: c.lineStart,
+        lineEnd: c.lineEnd,
+        dependencies: c.dependencies,
+        capturedBindings: c.capturedBindings,
+        safe: c.safeForFutureExtraction
+      }))
+    });
+
+    try {
+      const options = signal ? { signal } : undefined;
+
+      const chatParams = {
+        model: targetModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' }
+      };
+
+      if (typeof maxOutputTokens === 'number' && maxOutputTokens > 0) {
+        chatParams.max_tokens = maxOutputTokens;
+      }
+
+      const completion = await this.client.chat.completions.create(chatParams, options);
+      const rawContent = completion.choices?.[0]?.message?.content || '{}';
+
+      let parsedJson;
+      try {
+        parsedJson = JSON.parse(rawContent);
+      } catch (jsonErr) {
+        throw new AIProviderError(`Failed to parse AI planning response JSON: ${jsonErr.message}`, {
+          code: 'invalid-response',
+          cause: jsonErr
+        });
+      }
+
+      const candidatesResult = Array.isArray(parsedJson?.candidates) ? parsedJson.candidates : [];
+      return { candidates: candidatesResult };
+    } catch (err) {
+      throw classifyOpenAIError(err);
+    }
+  }
 }
+

@@ -50,6 +50,16 @@
  */
 
 /**
+ * @typedef {Object} SplitterConfig
+ * @property {boolean} enabled - Whether code splitting planner is enabled.
+ * @property {number} minFileLines - Minimum file line count to suggest splitting.
+ * @property {number} minCandidateLines - Minimum candidate line count to consider for extraction.
+ * @property {string | null} targetDirectory - Target directory relative path or null.
+ * @property {number} maxCandidates - Maximum number of split candidates to return.
+ * @property {boolean} aiPlanning - Whether to use AI for candidate ranking and plan explanation.
+ */
+
+/**
  * @typedef {Object} ReviewerConfig
  * @property {readonly string[]} include - Glob patterns for files to include in the review.
  * @property {readonly string[]} exclude - Glob patterns for files and directories to exclude from the review.
@@ -61,6 +71,7 @@
  * @property {AnalyzersConfig} analyzers - Analyzer-specific configuration settings.
  * @property {AIConfig} ai - AI review configuration settings.
  * @property {CacheConfig} cache - Cache configuration settings.
+ * @property {SplitterConfig} splitter - Splitter configuration settings.
  */
 
 /**
@@ -123,8 +134,17 @@ export const DEFAULT_CONFIG = Object.freeze({
     enabled: true,
     directory: '.acr-cache',
     maxEntries: 1000
+  }),
+  splitter: Object.freeze({
+    enabled: true,
+    minFileLines: 120,
+    minCandidateLines: 20,
+    targetDirectory: null,
+    maxCandidates: 10,
+    aiPlanning: false
   })
 });
 
 export const CONFIG_FILE_NAME = '.acrrc.json';
 export const IGNORE_FILE_NAME = '.acrignore';
+

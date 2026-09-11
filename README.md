@@ -458,10 +458,96 @@ const result = await reviewRepository({
   }
 });
 
-console.log(`Analyzed ${result.summary.analyzed} changed files with ${result.findings.length} findings.`);
+## Code Splitting Preview (`acr split`)
+
+ACR provides an exact, validated in-memory preview for extracting components, hooks, services, utilities, and constant groups into separate modules.
+
+> [!IMPORTANT]
+> **Strict Read-Only Guarantee**: This phase is strictly read-only and generates proposed file transformations in memory. No files will be created, modified, renamed, or deleted on disk. The `--apply` option is not supported.
+
+### 1. Candidate Discovery
+
+Scan a file to list available extraction candidates with stable identifiers and safety levels:
+
+```bash
+npx @debdipbhat/acr split src/components/Dashboard.jsx
 ```
 
+Example listing:
+
+```text
+Split candidates found: 3
+
+1. user-card
+   Symbol: UserCard
+   Type: React component
+   Lines: 42-91
+   Suggested target: src/components/UserCard.jsx
+   Safety: automatic-ready
+
+2. format-date
+   Symbol: formatDate
+   Type: utility
+   Lines: 12-18
+   Suggested target: src/utils/format-date.js
+   Safety: automatic-ready
+
+3. dashboard-filters
+   Symbol: DashboardFilters
+   Type: React component
+   Lines: 95-164
+   Suggested target: src/components/DashboardFilters.jsx
+   Safety: manual-review
+
+No files were modified.
+```
+
+### 2. Candidate Selection & Boundary Plan
+
+Select a specific candidate to inspect the exact boundary contract, props, imports, exports, and validation checks:
+
+```bash
+npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card
+```
+
+### 3. Detailed Source & Target Preview
+
+Display the proposed target file creation and source file update in memory:
+
+```bash
+npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --preview
+```
+
+### 4. Structured JSON Output
+
+Emit machine-readable JSON (version 2 preview schema) for tooling integration:
+
+```bash
+npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --format json
+```
+
+### 5. Custom Target Path Override
+
+Override the suggested target file location:
+
+```bash
+npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --target src/components/cards/UserCard.jsx
+```
+
+### Safety Classifications
+
+Every candidate is deterministically classified:
+
+* **`automatic-ready`**: Complete, self-contained extraction with resolved dependencies, valid imports/exports, no circular dependencies, and parseable output.
+* **`manual-review`**: Valid preview constructed, but developer review is recommended (e.g. nested component capturing parent state requiring prop passing or event handler renaming).
+* **`blocked`**: Unsafe or incomplete transformation (e.g. conditional hook execution, target file collision, unresolved bindings, circular imports, or unsupported CommonJS). Blocked candidates are clearly explained.
+
+### AI Role
+
+When `--ai` is enabled, Groq/OpenAI is used only to improve candidate ranking, naming suggestions, and human-readable explanations. Deterministic AST parsing and validation never rely on AI generation.
+
 ## Contributing
+
 
 Contributions are welcome. If you find a bug, have an idea, or want to improve ACR, open an issue or submit a pull request.
 
