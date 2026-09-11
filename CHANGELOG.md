@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Code Splitter Phase 3: Safe Apply, Backup, and Rollback (`acr split <file> --candidate <id> --apply`)**: Safe transactional application of validated code splits with optimistic concurrency protection, byte-accurate backups, project-level locking, automatic rollback on validation failure, operation history tracking, and manual rollback.
+- **Transactional Two-File Application (`src/splitter/apply/file-transaction.js`, `src/splitter/apply/apply-transformation.js`)**: 12-step transactional write engine that writes and validates temporary files before atomic renames and verifies AST correctness post-write.
+- **Byte-Accurate Backup Manager (`src/splitter/apply/backup-manager.js`)**: Creates persistent, SHA-256 verified source backups in `.acr/backups/<operation-id>/files/` before applying modifications.
+- **Project-Level Mutex Lock (`src/splitter/apply/change-lock.js`)**: Exclusive concurrency lock via `.acr/split.lock` with active process detection and stale lock reclamation.
+- **Manual Rollback Engine (`src/splitter/apply/rollback-operation.js`, `acr split rollback <operation-id>`)**: Reverts applied splits using verified backups with source and target modification conflict detection.
+- **Operation History & Recovery Diagnostics (`src/splitter/apply/operation-history.js`, `acr split history`)**: Lists and inspects previous split operations and diagnoses interrupted states (`no-writes`, `partial-writes`, `complete-writes`).
+- **Operation Manifest Journaling (`src/splitter/apply/operation-manifest.js`)**: Zod-validated version 1 manifest recording operation metadata, before/after SHA-256 hashes, backup file paths, validation results, and rollback timestamps.
+- **17 New Typed Domain Errors & Standardized Exit Codes (`src/splitter/split-errors.js`)**: Complete error hierarchy (`ApplyNotAllowedError`, `SourceChangedError`, `OperationLockedError`, `RollbackConflictError`, etc.) and standardized split exit codes (0 through 8).
 - **Code Splitter Phase 2: Transformation Preview (`acr split <file> --candidate <id> [--preview]`)**: Exact, validated in-memory transformation preview for extracting a selected candidate into a target file without writing or mutating source files on disk.
 - **Transformation Planner & Orchestrator (`src/splitter/transformation-planner.js`)**: Coordinates boundary contract planning, dependency placement, prop injection, import/export calculation, AST preview generation, parse verification, and cycle detection.
 - **Candidate Boundary Contracts (`src/splitter/extraction-contract.js`)**: Formulates exact extraction contracts detailing moved declarations, captured bindings, props, parameter signatures, required imports, and target exports.

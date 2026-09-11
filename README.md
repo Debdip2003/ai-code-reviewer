@@ -458,93 +458,132 @@ const result = await reviewRepository({
   }
 });
 
-## Code Splitting Preview (`acr split`)
+## Code Splitting & Safe Modularization (`acr split`)
 
-ACR provides an exact, validated in-memory preview for extracting components, hooks, services, utilities, and constant groups into separate modules.
+ACR provides a robust, multi-phase code-splitting workflow: candidate discovery, exact boundary planning, in-memory preview, safe transactional application with persistent backups, operation history, and automatic/manual rollback.
 
-> [!IMPORTANT]
-> **Strict Read-Only Guarantee**: This phase is strictly read-only and generates proposed file transformations in memory. No files will be created, modified, renamed, or deleted on disk. The `--apply` option is not supported.
+### Recommended Workflow
+
+```bash
+# 1. Verify working directory is clean
+git status
+
+# 2. Preview the exact transformation without modifying disk
+acr split src/components/Dashboard.jsx --candidate user-card --preview
+
+# 3. Apply the split safely (creates backup before applying)
+acr split src/components/Dashboard.jsx --candidate user-card --apply
+
+# 4. Review git diff and run your test suite
+git diff
+npm test
+```
+
+Recommended `.gitignore` addition:
+```gitignore
+.acr/backups/
+.acr/split.lock
+```
+
+---
 
 ### 1. Candidate Discovery
 
 Scan a file to list available extraction candidates with stable identifiers and safety levels:
 
 ```bash
-npx @debdipbhat/acr split src/components/Dashboard.jsx
+acr split src/components/Dashboard.jsx
 ```
 
-Example listing:
+### 2. Candidate Selection & Transformation Preview
 
-```text
-Split candidates found: 3
-
-1. user-card
-   Symbol: UserCard
-   Type: React component
-   Lines: 42-91
-   Suggested target: src/components/UserCard.jsx
-   Safety: automatic-ready
-
-2. format-date
-   Symbol: formatDate
-   Type: utility
-   Lines: 12-18
-   Suggested target: src/utils/format-date.js
-   Safety: automatic-ready
-
-3. dashboard-filters
-   Symbol: DashboardFilters
-   Type: React component
-   Lines: 95-164
-   Suggested target: src/components/DashboardFilters.jsx
-   Safety: manual-review
-
-No files were modified.
-```
-
-### 2. Candidate Selection & Boundary Plan
-
-Select a specific candidate to inspect the exact boundary contract, props, imports, exports, and validation checks:
+Preview the planned imports, exports, props, and generated code in memory:
 
 ```bash
-npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card
+# View boundary plan and validation checks
+acr split src/components/Dashboard.jsx --candidate user-card
+
+# View generated CREATE <target> and UPDATE <source> code blocks
+acr split src/components/Dashboard.jsx --candidate user-card --preview
+
+# Emit structured JSON preview
+acr split src/components/Dashboard.jsx --candidate user-card --format json
 ```
 
-### 3. Detailed Source & Target Preview
+### 3. Safe Application (`--apply`)
 
-Display the proposed target file creation and source file update in memory:
+Apply an `automatic-ready` candidate with transaction guarantees, optimistic concurrency protection, and persistent backup:
 
 ```bash
-npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --preview
+# Interactive application (prompts for confirmation)
+acr split src/components/Dashboard.jsx --candidate user-card --apply
+
+# Non-interactive application (for scripts / CI)
+acr split src/components/Dashboard.jsx --candidate user-card --apply --yes
+
+# Custom target location
+acr split src/components/Dashboard.jsx --candidate user-card --target src/components/cards/UserCard.jsx --apply --yes
+
+# Machine-readable JSON output
+acr split src/components/Dashboard.jsx --candidate user-card --apply --yes --format json
 ```
 
-### 4. Structured JSON Output
+### 4. Split History (`acr split history`)
 
-Emit machine-readable JSON (version 2 preview schema) for tooling integration:
+Inspect previous split operations recorded in `.acr/backups/`:
 
 ```bash
-npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --format json
+# List all previous operations
+acr split history
+
+# Inspect details of a specific operation
+acr split history 20260911T143012Z-a4f82c
+
+# JSON format
+acr split history --format json
 ```
 
-### 5. Custom Target Path Override
+### 5. Manual Rollback (`acr split rollback`)
 
-Override the suggested target file location:
+Revert an applied split operation to its exact pre-split state:
 
 ```bash
-npx @debdipbhat/acr split src/components/Dashboard.jsx --candidate user-card --target src/components/cards/UserCard.jsx
+# Interactive rollback
+acr split rollback 20260911T143012Z-a4f82c
+
+# Non-interactive rollback
+acr split rollback 20260911T143012Z-a4f82c --yes
+
+# JSON output
+acr split rollback 20260911T143012Z-a4f82c --yes --format json
 ```
 
-### Safety Classifications
+### Safety & Invariants
 
-Every candidate is deterministically classified:
+* **`automatic-ready`**: Clean, self-contained extraction with resolved dependencies, valid syntax, and no circular imports. Only `automatic-ready` candidates can be applied.
+* **`manual-review`**: Valid preview constructed, but developer review is required (e.g. nested closures capturing mutable state). **`--apply` is rejected**.
+* **`blocked`**: Unsafe or incomplete transformation (e.g. conditional hook execution, target collision, unresolved bindings, circular imports). **`--apply` is rejected**.
+* **Optimistic Concurrency**: If the source file changed after planning, application immediately aborts before any modification.
+* **Transaction & Auto-Rollback**: Temporary files are written and parsed before atomic renaming. If post-write validation fails, original source is restored and target removed automatically.
+* **Collision Protection**: Existing targets are never overwritten; rollbacks abort if source or target was modified by the user after splitting.
+* **AI Provider Role**: When `--ai` is enabled, Groq/OpenAI is used only to improve candidate ranking, naming suggestions, and explanations. AI never controls disk writes or validation.
 
-* **`automatic-ready`**: Complete, self-contained extraction with resolved dependencies, valid imports/exports, no circular dependencies, and parseable output.
-* **`manual-review`**: Valid preview constructed, but developer review is recommended (e.g. nested component capturing parent state requiring prop passing or event handler renaming).
-* **`blocked`**: Unsafe or incomplete transformation (e.g. conditional hook execution, target file collision, unresolved bindings, circular imports, or unsupported CommonJS). Blocked candidates are clearly explained.
+---
 
-### AI Role
+## Split Exit Codes
 
-When `--ai` is enabled, Groq/OpenAI is used only to improve candidate ranking, naming suggestions, and human-readable explanations. Deterministic AST parsing and validation never rely on AI generation.
+| Exit Code | Description |
+| :--- | :--- |
+| `0` | Success or interactive user cancellation before changes |
+| `1` | Unexpected internal failure |
+| `2` | Invalid CLI usage / candidate not found / operation not found |
+| `3` | Unsafe or blocked transformation (`manual-review` or `blocked` on apply) |
+| `4` | Confirmation required (non-interactive without `--yes`) |
+| `5` | Source changed after planning (optimistic concurrency) or target file collision |
+| `6` | Write or post-write validation failure |
+| `7` | Rollback conflict (source or target modified after split) |
+| `8` | Operation locked by concurrent ACR process |
+| `130` | Process interrupted by user (`SIGINT` / `SIGTERM`) |
 
 ## Contributing
 

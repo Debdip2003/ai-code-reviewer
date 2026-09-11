@@ -67,8 +67,10 @@ export { reviewAction } from './cli/commands/review.js';
 export { initAction } from './cli/commands/init.js';
 export { cacheClearAction } from './cli/commands/cache.js';
 export { splitAction } from './cli/commands/split.js';
+export { splitHistoryAction } from './cli/commands/split-history.js';
+export { splitRollbackAction } from './cli/commands/split-rollback.js';
 
-// Code Splitter (V2 Experimental)
+// Code Splitter (V2 Discovery & Preview)
 export { createSplitPlan } from './splitter/split-planner.js';
 export { createTransformationPlan } from './splitter/transformation-planner.js';
 export { buildDependencyGraph } from './splitter/dependency-graph.js';
@@ -84,8 +86,33 @@ export { detectImportCycles } from './splitter/cycle-detector.js';
 export { generateTransformationPreviews } from './splitter/preview-generator.js';
 export { toKebabId, parseAst, generateCode } from './splitter/ast-utils.js';
 export { SplitPlanSchema, SplitCandidateSchema } from './splitter/split-plan-schema.js';
-export { TransformationPlanSchema } from './splitter/transformation-plan-schema.js';
+export { TransformationPlanSchema, ApplyResultSchema } from './splitter/transformation-plan-schema.js';
+
+// Code Splitter (Phase 3 Safe Apply, Backup, and Rollback)
+export { applyTransformation } from './splitter/apply/apply-transformation.js';
+export { rollbackOperation } from './splitter/apply/rollback-operation.js';
+export { listOperationHistory, getOperationHistory } from './splitter/apply/operation-history.js';
+export { executeFileTransaction } from './splitter/apply/file-transaction.js';
+export { createBackup, verifyBackup, restoreBackupFile } from './splitter/apply/backup-manager.js';
+export { acquireLock, releaseLock } from './splitter/apply/change-lock.js';
+export { validatePreApply, validatePostWrite } from './splitter/apply/apply-validator.js';
 export {
+  calculateSha256,
+  calculateFileSha256,
+  generateOperationId,
+  encodePathForBackup,
+  decodePathFromBackup
+} from './splitter/apply/write-utils.js';
+export {
+  OperationManifestSchema,
+  createOperationManifest,
+  writeOperationManifest,
+  readOperationManifest
+} from './splitter/apply/operation-manifest.js';
+
+// Splitter Error Classes & Exit Codes
+export {
+  SPLIT_EXIT_CODES,
   SplitError,
   SplitInputError,
   SplitValidationError,
@@ -97,7 +124,22 @@ export {
   UnresolvedBindingError,
   CircularDependencyError,
   PreviewGenerationError,
-  TransformationValidationError
+  TransformationValidationError,
+  ApplyNotAllowedError,
+  ConfirmationRequiredError,
+  OperationCancelledError,
+  SourceChangedError,
+  BackupCreationError,
+  BackupVerificationError,
+  OperationLockedError,
+  TemporaryWriteError,
+  AtomicRenameError,
+  PostWriteValidationError,
+  AutomaticRollbackError,
+  RollbackConflictError,
+  OperationNotFoundError,
+  InvalidOperationManifestError,
+  InterruptedOperationError,
+  UnsafeFileTypeError,
+  SymlinkRejectedError
 } from './splitter/split-errors.js';
-
-

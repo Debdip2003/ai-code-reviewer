@@ -26,6 +26,7 @@ import {
   TargetOutsideProjectError,
   TransformationValidationError
 } from './split-errors.js';
+import { calculateSha256 } from './apply/write-utils.js';
 
 /**
  * Creates a validated in-memory code-splitting transformation plan for a selected candidate.
@@ -271,6 +272,9 @@ export async function createTransformationPlan({
     .filter((b) => b.resolution === 'unresolved')
     .map((b) => b.name);
 
+  const sourceHash = calculateSha256(sourceCode);
+  const targetExisted = fsSync.existsSync(absTarget);
+
   const plan = {
     version: 2,
     mode: 'preview',
@@ -292,6 +296,11 @@ export async function createTransformationPlan({
       cycles: detectedCycles,
       errors: validationErrors,
       warnings: validationWarnings
+    },
+    sourceHash,
+    before: {
+      sourceHash,
+      targetExisted
     },
     filesModified: 0
   };
