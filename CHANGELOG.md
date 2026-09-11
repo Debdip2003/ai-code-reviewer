@@ -5,7 +5,7 @@ All notable changes to the **ACR (Autonomous Code Reviewer)** package will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-11
 
 ### Added
 - **Code Splitter Phase 3: Safe Apply, Backup, and Rollback (`acr split <file> --candidate <id> --apply`)**: Safe transactional application of validated code splits with optimistic concurrency protection, byte-accurate backups, project-level locking, automatic rollback on validation failure, operation history tracking, and manual rollback.

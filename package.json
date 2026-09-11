@@ -1,7 +1,7 @@
 {
   "name": "@debdipbhat/acr",
-  "version": "0.1.2",
-  "description": "Production-quality, terminal-first JavaScript and React code reviewer powered by static analysis and AI.",
+  "version": "0.2.0",
+  "description": "Production-quality, terminal-first JavaScript, React, and TypeScript code reviewer and safe code splitter powered by static analysis and AI.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -29,8 +29,12 @@
   "keywords": [
     "acr",
     "code-review",
+    "code-splitter",
+    "refactoring",
     "javascript",
+    "typescript",
     "react",
+    "ast",
     "cli",
     "static-analysis",
     "ai",
