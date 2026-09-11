@@ -57,40 +57,71 @@ async function run() {
     console.log('Step 4: Testing programmatic ESM exports...');
     const nodeCmd = process.execPath;
     const testImportScript = `
-      import { reviewRepository, EXIT_CODES, runDoctorChecks } from '@debdipbhat/acr';
+      import {
+        reviewRepository,
+        EXIT_CODES,
+        runDoctorChecks,
+        createSplitPlan,
+        createTransformationPlan,
+        applyTransformation,
+        rollbackOperation,
+        SPLIT_EXIT_CODES,
+        SplitPlanSchema,
+        TransformationPlanSchema,
+        OperationManifestSchema
+      } from '@debdipbhat/acr';
+
       if (typeof reviewRepository !== 'function') throw new Error('reviewRepository is not a function');
       if (typeof runDoctorChecks !== 'function') throw new Error('runDoctorChecks is not a function');
+      if (typeof createSplitPlan !== 'function') throw new Error('createSplitPlan is not a function');
+      if (typeof createTransformationPlan !== 'function') throw new Error('createTransformationPlan is not a function');
+      if (typeof applyTransformation !== 'function') throw new Error('applyTransformation is not a function');
+      if (typeof rollbackOperation !== 'function') throw new Error('rollbackOperation is not a function');
       if (EXIT_CODES.SUCCESS !== 0) throw new Error('EXIT_CODES invalid');
+      if (SPLIT_EXIT_CODES.SUCCESS !== 0) throw new Error('SPLIT_EXIT_CODES invalid');
+      if (!SplitPlanSchema || !TransformationPlanSchema || !OperationManifestSchema) {
+        throw new Error('Zod schemas not exported');
+      }
       console.log('Programmatic API exports verified successfully.');
     `;
-    await execFileAsync(nodeCmd, ['-e', testImportScript], {
+    const testScriptPath = path.join(tempDir, 'test-import.js');
+    fs.writeFileSync(testScriptPath, testImportScript, 'utf-8');
+
+    const { stdout: importStdout } = await execFileAsync(nodeCmd, ['test-import.js'], {
       cwd: tempDir,
       windowsHide: true
     });
+    console.log(importStdout.trim());
     console.log('[PASS] Programmatic API import passed.\n');
 
     // 5. Test CLI execution in consumer
     console.log('Step 5: Testing CLI executable...');
-    const acrBin = path.join(tempDir, 'node_modules', '.bin', process.platform === 'win32' ? 'acr.cmd' : 'acr');
-    const { stdout: cliVersionOut } = await execFileAsync(acrBin, ['--version'], {
+    const cliPath = path.join(tempDir, 'node_modules', '@debdipbhat', 'acr', 'bin', 'cli.js');
+    const { stdout: cliVersionOut } = await execFileAsync(nodeCmd, [cliPath, '--version'], {
       cwd: tempDir,
-      windowsHide: true,
-      shell: process.platform === 'win32'
+      windowsHide: true
     });
     console.log(`CLI version: ${cliVersionOut.trim()}`);
     console.log('[PASS] CLI binary invocation passed.\n');
 
-    // 6. Test Doctor command in consumer
-    console.log('Step 6: Testing "acr doctor" in consumer...');
-    const { stdout: doctorOut } = await execFileAsync(acrBin, ['doctor', '--format', 'json'], {
+    // 6. Test Doctor & Split commands in consumer
+    console.log('Step 6: Testing "acr doctor" & "acr split --help" in consumer...');
+    const { stdout: doctorOut } = await execFileAsync(nodeCmd, [cliPath, 'doctor', '--format', 'json'], {
       cwd: tempDir,
-      windowsHide: true,
-      shell: process.platform === 'win32'
+      windowsHide: true
     });
     const parsedDoctor = JSON.parse(doctorOut);
     if (!parsedDoctor.status) throw new Error('Doctor did not return valid JSON status');
     console.log(`Doctor status: ${parsedDoctor.status}`);
-    console.log('[PASS] CLI doctor command passed.\n');
+
+    const { stdout: splitHelpOut } = await execFileAsync(nodeCmd, [cliPath, 'split', '--help'], {
+      cwd: tempDir,
+      windowsHide: true
+    });
+    if (!splitHelpOut.includes('candidate') || !splitHelpOut.includes('apply')) {
+      throw new Error('Split help output missing expected options');
+    }
+    console.log('[PASS] CLI doctor & split commands passed.\n');
 
     console.log('[SUCCESS] All package consumer smoke tests passed.');
     process.exitCode = 0;

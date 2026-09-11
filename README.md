@@ -1,17 +1,19 @@
 # ACR (Autonomous Code Reviewer)
 
-A production-quality, terminal-first npm package for reviewing JavaScript and React repositories using deterministic static analysis, code complexity analysis, React-specific inspections, and AI.
+A production-quality, terminal-first npm package for reviewing and safely modularizing JavaScript, TypeScript, and React repositories using deterministic static analysis, complexity metrics, AST transformations, and AI.
 
 ## Project Purpose
 
-`ACR` (`acr`) inspects JavaScript and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted AI insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+`ACR` (`acr`) inspects JavaScript, TypeScript, and React codebases for syntax integrity, structural anti-patterns, quality issues, and potential bugs. It combines deterministic static parsing, ESLint analysis, React Hook rules, and AST-based code analysis with targeted AI insights to deliver clear, actionable feedback directly in your terminal or formatted as JSON.
+
+Additionally, ACR provides an intelligent, automated **code-splitting engine** to safely extract oversized components, hooks, and utilities into dedicated files with transactional safety, optimistic concurrency locking, byte-accurate backups, and instant rollback.
 
 ## Review Pipeline
 
 ```text
 Configuration & Diagnostics
 → File discovery & Git scope resolution
-→ Babel AST parsing
+→ Babel AST parsing (JS, JSX, TS, TSX)
 → ESLint and React Hooks rules
 → Complexity analysis
 → Custom React AST analysis
@@ -27,10 +29,11 @@ Configuration & Diagnostics
 
 ## Capabilities
 
-* **Deterministic Static Analysis Active:** Evaluates JavaScript and React JSX files using internal ESLint rules focused on bug prevention.
+* **Deterministic Static Analysis Active:** Evaluates JavaScript, TypeScript, and React files using internal ESLint rules focused on bug prevention.
 * **React Hooks Rules Active:** Enforces official React Hooks rules (`react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`) via isolated flat configuration.
 * **Custom React AST Analysis Active:** Detects oversized components, direct state mutations, async `useEffect` callbacks, oversized effect callbacks, and array-index keys.
 * **AST Complexity Analysis Active:** Evaluates function line length, parameter count, cyclomatic complexity, and control-flow decision nesting depth using AST inspection.
+* **Safe Code Splitting & Modularization (`acr split`):** Discovers extraction candidates (React components, custom hooks, utilities), generates exact dependency and prop boundary contracts, previews transformations in memory, and applies multi-file refactors with atomic guarantees, persistent backups (`.acr/backups/`), and single-command rollback.
 * **Git-Aware Changed-File Review (`--changed`, `--base <ref>`):** Read-only Git operations to review only modified, staged, added, or branched files and lines.
 * **Changed-Line Finding & Chunk Filtering:** Restricts deterministic findings and AI chunks to modified line hunks while preserving full function AST context.
 * **Content-Addressed Local Cache (`.acr-cache/`):** Deterministic SHA-256 caching of normalized findings, metrics, and AST summaries with zero source code or API key persistence.
@@ -38,7 +41,7 @@ Configuration & Diagnostics
 * **Bring-Your-Own-Key (BYOK):** AI review uses your own API key via `OPENAI_API_KEY` (or `GROQ_API_KEY`). API keys are never stored in config files or passed via CLI args.
 * **Diagnostic Toolchain Health Check (`acr doctor`):** Inspects Node.js version, Git readiness, cache path safety, config validity, and key status.
 * **Graceful Signal Cancellation:** Full support for `AbortController` and `SIGINT`/`SIGTERM` termination across all stages with exit code `130`.
-* **Zero Source Modification:** Operates in pure read-only mode (`fix: false`) and **never modifies** repository files or Git state.
+* **Zero Source Modification on Review/Preview:** Review and preview commands operate in pure read-only mode and **never modify** repository files or Git state.
 
 ## Supported File Extensions
 
@@ -46,6 +49,8 @@ Configuration & Diagnostics
 * `.jsx` – React JSX components
 * `.mjs` – ECMAScript Modules
 * `.cjs` – CommonJS Modules
+* `.ts` – TypeScript
+* `.tsx` – TypeScript JSX components
 
 ## Installation
 
@@ -423,30 +428,37 @@ Model pricing is versioned and informational:
 
 ## Programmatic API
 
+ACR exports a comprehensive, type-safe ESM programmatic API for integration into custom CI scripts, editors, or developer tooling:
+
 ```js
 import {
+  // Code Review & Diagnostics
+  reviewRepository,
   loadConfig,
   discoverFiles,
   getChangedFiles,
   getChangedLineRanges,
-  filterFindingsByScope,
-  FileCache,
-  generateCacheKey,
+  runDoctorChecks,
+  EXIT_CODES,
+
+  // Code Splitting & Modularization
+  createSplitPlan,
+  createTransformationPlan,
+  applyTransformation,
+  rollbackOperation,
+  listOperationHistory,
+  SPLIT_EXIT_CODES,
+
+  // Parsers & AST Analyzers
   parseJavaScript,
   analyzeWithEslint,
   analyzeComplexity,
-  analyzeReact,
-  createSemanticChunks,
-  createAIProvider,
-  reviewWithAI,
-  reviewRepository,
-  runDoctorChecks,
-  EXIT_CODES
+  analyzeReact
 } from '@debdipbhat/acr';
 
-// Run review in git-changed mode
+// 1. Run automated code review on git changes
 const changedInfo = await getChangedFiles({ rootDirectory: process.cwd() });
-const result = await reviewRepository({
+const reviewResult = await reviewRepository({
   rootDirectory: process.cwd(),
   reviewScope: {
     mode: 'changed',
@@ -457,6 +469,32 @@ const result = await reviewRepository({
     }, {})
   }
 });
+
+// 2. Discover split candidates in a component
+const splitPlan = await createSplitPlan({
+  filePath: 'src/Dashboard.jsx',
+  rootDirectory: process.cwd()
+});
+console.log('Found candidates:', splitPlan.candidates.map(c => c.id));
+
+// 3. Generate transformation plan preview
+const plan = await createTransformationPlan({
+  filePath: 'src/Dashboard.jsx',
+  candidateId: 'user-card',
+  rootDirectory: process.cwd()
+});
+console.log('Target code:\n', plan.previews.targetFile.code);
+
+// 4. Safely apply transformation
+if (plan.safety === 'automatic-ready') {
+  const result = await applyTransformation({
+    plan,
+    rootDirectory: process.cwd(),
+    nonInteractive: true
+  });
+  console.log('Applied operation ID:', result.operationId);
+}
+```
 
 ## Code Splitting & Safe Modularization (`acr split`)
 
